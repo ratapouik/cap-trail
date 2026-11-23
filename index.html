@@ -926,7 +926,7 @@ function renderAnalyse(){
     <p><b>Forme / fatigue / fraîcheur</b> : moyennes exponentielles de la charge quotidienne sur 42 j (CTL) et 7 j (ATL) ; TSB = CTL − ATL de la veille. Ratio aigu/chronique = ATL/CTL : zone sûre 0,8 – 1,3, risque au-delà de 1,5.</p>
     <p><b>VMA</b> : vitesse d'un effort quasi maximal (FC ≥ 90 % FC max) divisée par la part de VMA tenable sur sa durée (100 % jusqu'à 6 min, puis 1 − 0,055·ln(durée/6)).</p>
     <p><b>VAM</b> : meilleur dénivelé net par heure sur 10 min de temps en mouvement, pente 6-18 % (courable) ou &gt; 18 % (raide). Si la FC était sous le seuil, extrapolation prudente vers 90 % de HRR (exposant 0,75, plafond +35 %).</p>
-    <p><b>VFC et sommeil (Runalyze / Garmin)</b> : alerte si la VFC moyenne des 3 dernières nuits passe sous 92 % (orange) ou 85 % (rouge) de la médiane des 30 jours précédents ; si le sommeil moyen des 3 dernières nuits passe sous 6 h 30 (orange) ou 5 h (rouge).</p>
+    <p><b>VFC et sommeil (Runalyze / Garmin)</b> : alerte si la VFC moyenne des 3 dernières nuits passe sous 92 % (orange) ou 85 % (rouge) de la médiane des 30 jours précédents ; sommeil pris en compte à titre indicatif seulement (montre pas toujours portée la nuit) : nuits &lt; 4 h ignorées, au moins 2 nuits complètes nécessaires, alerte orange simple sous 6 h et pénalité limitée à 5 points dans le score de forme.</p>
     <p><b>Biométrie</b> : poids du profil = moyenne 7 j, FC repos = médiane 28 j (saisie manuelle prioritaire sur Runalyze, elle-même prioritaire sur Strava). Chaque séance utilise la FC repos médiane des 28 jours qui la précèdent pour le TRIMP. Alerte si la FC repos du jour dépasse de 5 bpm (orange) ou 8 bpm / 2 jours à +5 (rouge) la médiane des 28 jours précédents, ou si le poids varie de plus de 1 %/sem (régression sur 28 j).</p>
     <p><b>Dérive cardiaque</b> : efficacité = (distance + 10 × D+)/temps ÷ FC, comparée entre 1<sup>re</sup> et 2<sup>de</sup> moitié. Au-delà de 5-8 %, l'endurance de fond ou le ravitaillement lâchent.</p>`;
 }
@@ -1084,7 +1084,7 @@ function bioAlerts(){
     else if(h.cls==='orange')A.push(['orange','Data','VFC en baisse',`VFC moyenne des 3 dernières nuits ${Math.round(h.avg3)} ms pour une référence de ${Math.round(h.base)} ms (${Math.round((h.ratio-1)*100)} %). Garde les séances en endurance facile.`]);
   }
   const sl=sleepState();
-  if(sl.avg3!=null&&sl.cls!=='green')A.push([sl.cls,'Data','Sommeil insuffisant',`${fmtH(sl.avg3)} en moyenne sur les ${sl.n} dernières nuits (cible ≥ 7 h). La récupération se fait la nuit : priorité au sommeil avant d'ajouter de la charge.`]);
+  if(sl.avg3!=null&&sl.cls!=='green')A.push(['orange','Data','Sommeil court (indicatif)',`${fmtH(sl.avg3)} en moyenne sur ${sl.n} nuits complètes enregistrées${sl.ignored?` (${sl.ignored} nuit(s) < 4 h ignorée(s), montre probablement retirée)`:''}. À confirmer par ton ressenti.`]);
   const tr=weightTrend(),w7=bioAvg('poids',7);
   if(tr!=null&&w7){const pct=tr/w7*100;
     if(pct<-1)A.push(['orange','Data','Perte de poids rapide',`${fmt(tr,2)} kg/sem (${fmt(pct,1)} %/sem). Au-delà de 1 %/sem, risque de perte musculaire et de baisse de récupération : garde un apport suffisant les jours chargés.`]);
@@ -1155,10 +1155,14 @@ function hrvState(){
   const base=ref.length>=5?median(ref):null,a3=avg(v.slice(-3).map(x=>x.hrv));
   const r=base?a3/base:null;return{last:last.hrv,lastDate:last.date,base,avg3:a3,ratio:r,cls:r==null?'':r<.85?'red':r<.92?'orange':'green'};
 }
+// Sommeil = indicateur secondaire : la montre n'est pas toujours portée toute la nuit.
+// Les nuits < 4 h sont considérées comme incomplètes (montre retirée) et ignorées ; il faut au moins 2 nuits valides.
+const SLEEP_MIN_VALID=4;
 function sleepState(){
-  const s=bioSorted().filter(x=>x.sommeilH!=null&&parseD(x.date)>addDays(today0(),-5)).slice(-3);
-  if(!s.length)return{avg3:null,cls:''};const a=avg(s.map(x=>x.sommeilH));
-  return{avg3:a,n:s.length,cls:a<5?'red':a<6.5?'orange':'green'};
+  const recent=bioSorted().filter(x=>x.sommeilH!=null&&parseD(x.date)>addDays(today0(),-5));
+  const s=recent.filter(x=>x.sommeilH>=SLEEP_MIN_VALID).slice(-3),ignored=recent.length-recent.filter(x=>x.sommeilH>=SLEEP_MIN_VALID).length;
+  if(s.length<2)return{avg3:null,cls:'',ignored};const a=avg(s.map(x=>x.sommeilH));
+  return{avg3:a,n:s.length,ignored,cls:a<6?'orange':'green'};
 }
 
 /* --- Synchro Runalyze (via le relais : /runalyze/... authentifié par le jeton Strava) --- */
@@ -1255,9 +1259,9 @@ function readiness(){
   // sommeil
   const sl=sleepState();
   if(sl.avg3!=null){
-    if(sl.avg3<5)pen(20,'Sommeil',`${fmtH(sl.avg3)} en moyenne`);
-    else if(sl.avg3<6.5)pen(10,'Sommeil',`${fmtH(sl.avg3)} en moyenne`);
-    else ok('Sommeil',`${fmtH(sl.avg3)} en moyenne`)}
+    if(sl.avg3<6)pen(5,'Sommeil',`${fmtH(sl.avg3)} en moyenne (indicatif, montre pas toujours portée)`);
+    else ok('Sommeil',`${fmtH(sl.avg3)} en moyenne (indicatif)`)}
+  else if(sl.ignored)ok('Sommeil',`nuits incomplètes ignorées (montre retirée ?)`)
   // FC repos du jour
   const base=fcBaseline(),lf=[...bioSorted()].reverse().find(x=>x.fcRepos!=null);
   if(base!=null&&lf&&(today0()-parseD(lf.date))/DAY<=1){const d=lf.fcRepos-base;
