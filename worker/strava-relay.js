@@ -1,4 +1,4 @@
-// Relais Strava pour l'appli Cap Trail — Cloudflare Worker (format module)
+// Relais Strava + Runalyze pour l'appli Cap Trail — Cloudflare Worker (format module), déployé depuis GitHub
 //
 // Rôle : garder la clé secrète Strava hors de la page publique.
 //   POST /token    {code}           -> échange le code OAuth contre des jetons
