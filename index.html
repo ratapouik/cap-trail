@@ -554,7 +554,7 @@ async function relay(path,opts={}){
   const t=await r.text();let j;try{j=JSON.parse(t)}catch(e){j={message:t}}
   if(!r.ok){
     if(r.status===401){ST.access=null;stSave()}
-    throw new Error((j&&j.message)||('HTTP '+r.status));
+    throw new Error((j&&(j.message||j.detail||j.title))||('HTTP '+r.status));
   }
   return j;
 }
@@ -1163,7 +1163,7 @@ async function runalyzeSync(){
     ST.rzSync=new Date().toISOString();stSave();
     syncProfileFromBio();save();render();
     flash('#msgRz',`Runalyze : ${nb.fc} FC repos, ${nb.hrv} VFC, ${nb.sl} nuits, ${nb.w} pesées (400 derniers jours). Profil mis à jour.`);
-  }catch(e){flash('#msgRz','Synchronisation impossible : '+e.message,true)}
+  }catch(e){flash('#msgRz','Synchronisation impossible : '+e.message+(/Access Denied/i.test(e.message)?' — le jeton Runalyze n\'a pas les droits de lecture (Paramètres Runalyze → Personal API : cocher Read pour Heart Rate Rest, Sleep, HRV, Weight et Statistics).':''),true)}
   finally{btn.disabled=false}
 }
 $('#btnRz').onclick=runalyzeSync;
