@@ -63,7 +63,7 @@ svg.chart{width:100%;height:auto;display:block}
 svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
 .result{margin-top:14px;padding:14px;border-radius:10px;background:var(--accent-soft)}
 .result .big{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}
-@media (max-width:600px){main{padding:12px}.top .sub{display:none}}
+@media (max-width:600px){main{padding:12px}.top .sub{display:none}.grid>label{grid-column:auto!important}}
 </style>
 </head>
 <body>
@@ -74,6 +74,7 @@ svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
     <button data-t="semaines">Semaines</button>
     <button data-t="analyse">Analyse</button>
     <button data-t="simulation">Simulation</button>
+    <button data-t="bio">Biométrie</button>
     <button data-t="profil">Profil</button>
     <button data-t="donnees">Import / Export</button>
   </nav>
@@ -166,6 +167,42 @@ svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
     </div>
     <div class="row" style="margin-top:12px"><button class="btn" id="btnPred">Estimer</button></div>
     <div id="pOut"></div>
+  </div>
+</section>
+
+<!-- BIOMETRIE -->
+<section id="bio">
+  <div class="card">
+    <h2>Mesure du jour</h2>
+    <p class="muted" style="margin-top:0">FC de repos : à prendre le matin au réveil, allongé, avant de te lever (ou la valeur nocturne de la montre, toujours la même source). Poids : le matin, à jeun, après passage aux toilettes.</p>
+    <div class="grid">
+      <label>Date<input type="date" id="bDate"></label>
+      <label>Poids (kg)<input type="number" step="0.1" id="bPoids" inputmode="decimal"></label>
+      <label>FC repos (bpm)<input type="number" id="bFc" inputmode="numeric"></label>
+      <label style="grid-column:span 2">Note (sommeil, stress, malade…)<input id="bNote"></label>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="btnBio">Enregistrer</button></div>
+    <div class="msg" id="msgBio"></div>
+  </div>
+  <div class="kpis" id="bKpis"></div>
+  <div class="card" style="margin-top:16px">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <h2 style="margin:0">Évolution</h2>
+      <select id="bRange"><option value="30">1 mois</option><option value="90" selected>3 mois</option><option value="365">12 mois</option></select>
+    </div>
+    <div class="legend" style="margin-bottom:6px"><span><i style="background:var(--line)"></i>mesure du jour</span><span><i style="background:var(--accent)"></i>moyenne 7 j</span><span><i style="background:var(--z3)"></i>référence</span></div>
+    <h3 style="font-size:13px;margin:8px 0 2px">Poids (kg)</h3><div id="bChartP"></div>
+    <h3 style="font-size:13px;margin:12px 0 2px">FC de repos (bpm)</h3><div id="bChartF"></div>
+  </div>
+  <div class="card">
+    <h2>Historique</h2>
+    <div class="scroll"><table id="tBio"></table></div>
+  </div>
+  <div class="card">
+    <h2>Import CSV</h2>
+    <p class="muted" style="margin-top:0">Fichier avec une colonne date et une colonne poids et/ou FC repos (en-têtes reconnus : date, poids/weight, fc repos/resting/rhr). Export Garmin Connect ou balance connectée accepté s'il respecte ce format. Les dates déjà saisies sont complétées, pas dupliquées.</p>
+    <input type="file" id="fileBio" accept=".csv,text/csv">
+    <div class="msg" id="msgBioCsv"></div>
   </div>
 </section>
 
@@ -275,7 +312,7 @@ const DEFAULT={
   profile:{fcMax:188,fcRepos:50,vma:17.5,vamCourable:1100,vamRaide:1000,poids:71.8,poidsForme:69,ftp:205,
     zones:[{n:'Z1',min:0,max:70},{n:'Z2',min:70,max:80},{n:'Z3',min:80,max:87},{n:'Z4',min:87,max:93},{n:'Z5',min:93,max:101}],
     sportMap:{}},
-  sessions:[], workouts:[], races:[], plan:[]
+  sessions:[], workouts:[], races:[], plan:[], bio:[]
 };
 let DB=load();
 function load(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.version)return merge(d)}catch(e){}return structuredClone(DEFAULT)}
@@ -495,7 +532,8 @@ function renderStrava(){
   $('#stStatus').textContent=on
     ?`Connecté${ST.athleteName?' ('+ST.athleteName+')':''}. Dernière synchro : ${ST.lastSync?new Date(ST.lastSync*1000).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):'jamais'}.`
     :'Non connecté. Renseigne le Client ID de ton application Strava et l\'URL de ton relais Cloudflare, puis clique sur « Connecter Strava ».';
-  const box=$('#stProfile');const a=ST.athlete;
+  const box=$('#stProfile');const a=ST.athlete?{...ST.athlete}:null;
+  if(a&&DB.bio?.some(b=>b.poids!=null))a.weight=null;   // la pesée de l'appli prime sur Strava
   if(a&&(a.weight||a.ftp)){box.style.display='flex';
     box.innerHTML=`<span class="muted">Valeurs Strava : ${a.weight?fmt(a.weight,1)+' kg':''}${a.weight&&a.ftp?' · ':''}${a.ftp?'FTP '+a.ftp+' W':''}</span><button class="btn small ghost" id="btnStApply">Reprendre dans le profil</button>`;
     $('#btnStApply').onclick=()=>{if(a.weight)DB.profile.poids=Math.round(a.weight*10)/10;if(a.ftp)DB.profile.ftp=a.ftp;save();render();flash('#msgProf','Poids et FTP repris de Strava.')};
@@ -598,6 +636,7 @@ async function stHandleCallback(){
    MOTEUR D'ANALYSE
    ===================================================================== */
 const DAY=864e5;
+const chartW=()=>innerWidth<600?380:720;   // largeur de dessin adaptée au téléphone
 const dayKey=d=>isoDate(d);
 const addDays=(d,n)=>new Date(d.getTime()+n*DAY);
 const today0=()=>{const d=new Date();d.setHours(12,0,0,0);return d};
@@ -609,15 +648,17 @@ const SPORT_HRR={trail:.62,route:.62,renfo:.45,velo:.5,ski:.55,marche:.4,autre:.
    TRIMP = durée(min) × HRr × 0,64 × e^(1,92 × HRr), HRr = (FCmoy − FCrepos)/(FCmax − FCrepos).
    Si les temps par zone sont connus (flux Strava), on somme zone par zone (plus juste que la moyenne).
    Sans FC : RPE si saisi (HRr ≈ RPE/10), sinon valeur type du sport. */
-function hrrOf(fc){const p=DB.profile;const r=(fc-(p.fcRepos||50))/((p.fcMax||188)-(p.fcRepos||50));return Math.max(0,Math.min(1.05,r))}
+// FC repos utilisée pour une date : moyenne biométrique des 7 jours précédents si disponible, sinon valeur du profil
+function restAt(date){if(date&&DB.bio?.length){const v=bioAvg('fcRepos',7,date);if(v!=null)return v}return DB.profile.fcRepos||50}
+function hrrOf(fc,date){const p=DB.profile,r0=restAt(date);const r=(fc-r0)/((p.fcMax||188)-r0);return Math.max(0,Math.min(1.05,r))}
 const trimpK=h=>.64*Math.exp(1.92*h);
 function loadOf(s){
   const min=(s.durationS||0)/60;if(!min)return{v:0,src:'—'};
   const p=DB.profile,d=s.detail;
   if(d&&d.zt&&d.zt.some(x=>x>0)){
-    let v=0;d.zt.forEach((sec,i)=>{const z=p.zones[i];if(!z)return;const mid=((z.min+Math.min(z.max,100))/2)/100*p.fcMax;const h=hrrOf(mid);v+=sec/60*h*trimpK(h)});
+    let v=0;d.zt.forEach((sec,i)=>{const z=p.zones[i];if(!z)return;const mid=((z.min+Math.min(z.max,100))/2)/100*p.fcMax;const h=hrrOf(mid,s.date);v+=sec/60*h*trimpK(h)});
     return{v,src:'zones'}}
-  if(s.fcMoy){const h=hrrOf(s.fcMoy);return{v:min*h*trimpK(h),src:'FC moy'}}
+  if(s.fcMoy){const h=hrrOf(s.fcMoy,s.date);return{v:min*h*trimpK(h),src:'FC moy'}}
   if(s.rpe){const h=Math.min(1,s.rpe/10);return{v:min*h*trimpK(h),src:'RPE'}}
   const h=SPORT_HRR[s.sport]??.45;return{v:min*h*trimpK(h)*.8,src:'estimée'}
 }
@@ -749,6 +790,8 @@ function alerts(){
   if(badDrift.length)A.push(['orange','Data','Dérive cardiaque élevée',`${badDrift.length} sortie(s) longue(s) avec un découplage > 8 % : endurance de fond ou ravitaillement à travailler.`]);
   if(w28.renfo<4)A.push([w28.renfo===0?'red':'orange','Renfo','Renforcement délaissé',`${w28.renfo} séance(s) de renfo sur 28 j (cible : 2 par semaine).`]);
   if(p.poids&&p.poidsForme&&p.poids-p.poidsForme>=2)A.push(['orange','Data','Écart au poids de forme',`${fmt(p.poids,1)} kg pour ${fmt(p.poidsForme,1)} kg de référence (+${fmt(p.poids-p.poidsForme,1)} kg, soit environ ${Math.round((p.poids/p.poidsForme-1)*100)} % de VAM en moins à puissance égale).`]);
+  A.push(...bioAlerts());
+  if(!DB.bio?.length)A.push(['orange','Data','Pas de suivi biométrique','Saisis ton poids et ta FC de repos dans l\'onglet Biométrie : la FC de repos est le meilleur signal précoce de fatigue ou de maladie.']);
   const age=p.recalAt?(Date.now()-new Date(p.recalAt))/DAY:null;
   if(age==null||age>60)A.push(['orange','Data','Référentiel à recaler',age==null?'Les valeurs du profil n\'ont jamais été recalées sur tes données.':`Dernier recalage il y a ${Math.round(age)} jours.`]);
   if(!A.some(a=>a[0]==='red'||a[0]==='orange'))A.push(['green','Data','Rien à signaler','Charge, récupération et répartition des intensités dans les clous.']);
@@ -783,7 +826,12 @@ function recal(){
       how:`${c.s.date} : ${c.b.v} m/h sur 10 min à ${c.b.gr} %${c.b.hr?' et '+c.b.hr+' bpm':''}${c.corr>1.01?` ; FC sous-maximale, extrapolé ×${fmt(c.corr,2)} vers un effort seuil`:''}.`,conf:c.corr>1.15?'faible':c.corr>1.01?'moyenne':'bonne'});
     else R.push({k,label,cur:p[k],prop:null,unit:'m/h',how:'Pas de montée analysée sur 4 mois. Lance « Analyser les séances ».',conf:'—'});
   }
-  if(ST.athlete?.weight)R.push({k:'poids',label:'Poids',cur:p.poids,prop:Math.round(ST.athlete.weight*10)/10,unit:'kg',how:'Poids renseigné sur Strava.',conf:'bonne'});
+  // Poids et FC repos : la biométrie saisie dans l'appli prime ; Strava seulement à défaut
+  const w7=bioAvg('poids',7),f7=bioAvg('fcRepos',7);
+  if(w7!=null)R.push({k:'poids',label:'Poids',cur:p.poids,prop:Math.round(w7*10)/10,unit:'kg',how:'Moyenne des pesées des 7 derniers jours (onglet Biométrie), mise à jour automatique.',conf:'bonne'});
+  else if(ST.athlete?.weight)R.push({k:'poids',label:'Poids',cur:p.poids,prop:Math.round(ST.athlete.weight*10)/10,unit:'kg',how:'Poids du profil Strava (pas de pesée saisie dans l\'appli).',conf:'moyenne'});
+  if(f7!=null)R.push({k:'fcRepos',label:'FC repos',cur:p.fcRepos,prop:Math.round(f7),unit:'bpm',how:'Moyenne des mesures des 7 derniers jours (onglet Biométrie), mise à jour automatique.',conf:'bonne'});
+  else R.push({k:'fcRepos',label:'FC repos',cur:p.fcRepos,prop:null,unit:'bpm',how:'Aucune mesure : la valeur par défaut fausse le calcul de charge. Saisis-la dans l\'onglet Biométrie.',conf:'—'});
   return R;
 }
 function renderRecal(){
@@ -802,7 +850,7 @@ function renderRecal(){
 /* --- Graphique SVG --- */
 function lineChart(rows,{h=240}={}){
   if(!rows.length)return'<p class="muted">Pas encore de données.</p>';
-  const W=720,H=h,pl=34,pr=8,pt=10,pb=24,iw=W-pl-pr,ih=H-pt-pb;
+  const W=chartW(),H=Math.round(h*(chartW()<720?.8:1)),pl=34,pr=8,pt=10,pb=24,iw=W-pl-pr,ih=H-pt-pb;
   const maxV=Math.max(10,...rows.map(r=>Math.max(r.ctl,r.atl))),minV=Math.min(0,...rows.map(r=>r.tsb));
   const maxL=Math.max(1,...rows.map(r=>r.load||0));
   const x=i=>pl+i*(iw/Math.max(1,rows.length-1)),y=v=>pt+ih-(v-minV)/(maxV-minV)*ih;
@@ -847,9 +895,11 @@ function renderAnalyse(){
     <p><b>Forme / fatigue / fraîcheur</b> : moyennes exponentielles de la charge quotidienne sur 42 j (CTL) et 7 j (ATL) ; TSB = CTL − ATL de la veille. Ratio aigu/chronique = ATL/CTL : zone sûre 0,8 – 1,3, risque au-delà de 1,5.</p>
     <p><b>VMA</b> : vitesse d'un effort quasi maximal (FC ≥ 90 % FC max) divisée par la part de VMA tenable sur sa durée (100 % jusqu'à 6 min, puis 1 − 0,055·ln(durée/6)).</p>
     <p><b>VAM</b> : meilleur dénivelé net par heure sur 10 min de temps en mouvement, pente 6-18 % (courable) ou &gt; 18 % (raide). Si la FC était sous le seuil, extrapolation prudente vers 90 % de HRR (exposant 0,75, plafond +35 %).</p>
+    <p><b>Biométrie</b> : poids et FC repos du profil = moyennes des 7 derniers jours saisis dans l'appli (prioritaires sur Strava). Chaque séance utilise la FC repos de sa propre semaine pour le TRIMP. Alerte si la FC repos du jour dépasse de 5 bpm (orange) ou 8 bpm / 2 jours à +5 (rouge) la médiane des 28 jours précédents, ou si le poids varie de plus de 1 %/sem (régression sur 28 j).</p>
     <p><b>Dérive cardiaque</b> : efficacité = (distance + 10 × D+)/temps ÷ FC, comparée entre 1<sup>re</sup> et 2<sup>de</sup> moitié. Au-delà de 5-8 %, l'endurance de fond ou le ravitaillement lâchent.</p>`;
 }
-$('#aRange').onchange=renderAnalyse;
+$("#aRange").onchange=renderAnalyse;
+let _rz;addEventListener("resize",()=>{clearTimeout(_rz);_rz=setTimeout(()=>{renderAnalyse();renderBio()},250)});
 
 /* =====================================================================
    SIMULATION
@@ -948,8 +998,142 @@ function runPred(){
 }
 $('#btnPred').onclick=runPred;
 
+/* =====================================================================
+   BIOMÉTRIE : poids et FC de repos saisis dans l'appli (source de référence, prioritaire sur Strava)
+   ===================================================================== */
+const bioSorted=()=>(DB.bio||[]).slice().sort((a,b)=>a.date.localeCompare(b.date));
+function bioAvg(key,days,endDate){
+  const end=endDate?parseD(endDate):today0(),from=addDays(end,-days);
+  return avg(bioSorted().filter(b=>b[key]!=null&&parseD(b.date)>from&&parseD(b.date)<=end).map(b=>b[key]));
+}
+function median(a){const s=a.filter(x=>x!=null).sort((x,y)=>x-y);if(!s.length)return null;const m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2}
+// FC repos de référence : médiane des 28 jours précédant la dernière mesure (hors 3 derniers jours)
+function fcBaseline(){
+  const b=bioSorted().filter(x=>x.fcRepos!=null);if(!b.length)return null;
+  const last=parseD(b[b.length-1].date);
+  const ref=b.filter(x=>parseD(x.date)<=addDays(last,-3)&&parseD(x.date)>addDays(last,-31)).map(x=>x.fcRepos);
+  return ref.length>=5?median(ref):null;
+}
+// Tendance du poids : pente de la régression linéaire sur 28 j, en kg/semaine
+function weightTrend(days=28){
+  const pts=bioSorted().filter(b=>b.poids!=null&&parseD(b.date)>addDays(today0(),-days)).map(b=>({x:(parseD(b.date)-today0())/DAY,y:b.poids}));
+  if(pts.length<5)return null;const mx=avg(pts.map(p=>p.x)),my=avg(pts.map(p=>p.y));
+  const den=pts.reduce((t,p)=>t+(p.x-mx)**2,0);if(!den)return null;
+  return pts.reduce((t,p)=>t+(p.x-mx)*(p.y-my),0)/den*7;
+}
+// Le profil suit automatiquement la biométrie (moyenne 7 j) : utilisé par le TRIMP, les alertes et la prédiction
+function syncProfileFromBio(){
+  const p=DB.profile,w=bioAvg('poids',7),f=bioAvg('fcRepos',7);
+  if(w!=null)p.poids=Math.round(w*10)/10;
+  if(f!=null)p.fcRepos=Math.round(f);
+  if(w!=null||f!=null)p.bioAt=new Date().toISOString();
+}
+function bioAlerts(){
+  const A=[],b=bioSorted();if(!b.length)return A;
+  const last=b[b.length-1],age=(today0()-parseD(last.date))/DAY;
+  const fcs=b.filter(x=>x.fcRepos!=null),base=fcBaseline();
+  if(base!=null&&fcs.length){
+    const l=fcs[fcs.length-1],prev=fcs[fcs.length-2];const d1=l.fcRepos-base,d2=prev?prev.fcRepos-base:0;
+    if((today0()-parseD(l.date))/DAY<=2){
+      if(d1>=8||(d1>=5&&d2>=5))A.push(['red','Data','FC de repos nettement élevée',`${l.fcRepos} bpm le ${l.date} pour une référence de ${Math.round(base)} bpm (+${Math.round(d1)})${d2>=5?', deux jours de suite':''}. Récupération incomplète, début de maladie ou stress : séance facile ou repos aujourd'hui.`]);
+      else if(d1>=5)A.push(['orange','Data','FC de repos en hausse',`${l.fcRepos} bpm pour une référence de ${Math.round(base)} bpm (+${Math.round(d1)}). Pas d'intensité aujourd'hui, recontrôle demain.`]);
+    }
+    const f7=bioAvg('fcRepos',7),f28=bioAvg('fcRepos',28);
+    if(f7!=null&&f28!=null&&f7-f28>=3)A.push(['orange','Data','Fatigue de fond possible',`FC de repos moyenne 7 j : ${fmt(f7,1)} bpm contre ${fmt(f28,1)} sur 28 j. Surveille la charge.`]);
+  }
+  const tr=weightTrend(),w7=bioAvg('poids',7);
+  if(tr!=null&&w7){const pct=tr/w7*100;
+    if(pct<-1)A.push(['orange','Data','Perte de poids rapide',`${fmt(tr,2)} kg/sem (${fmt(pct,1)} %/sem). Au-delà de 1 %/sem, risque de perte musculaire et de baisse de récupération : garde un apport suffisant les jours chargés.`]);
+    else if(pct>.5)A.push(['orange','Data','Poids en hausse',`+${fmt(tr,2)} kg/sem sur 28 j.`])}
+  if(age>7)A.push(['orange','Data','Biométrie à mettre à jour',`Dernière mesure il y a ${Math.round(age)} jours. Une pesée et une FC de repos chaque matin (ou 3 fois par semaine) suffisent.`]);
+  return A;
+}
+function miniChart(key,days,ref){
+  const pts=bioSorted().filter(b=>b[key]!=null&&parseD(b.date)>addDays(today0(),-days));
+  if(pts.length<2)return'<p class="muted">Au moins deux mesures nécessaires.</p>';
+  const W=chartW(),H=chartW()<720?170:150,pl=34,pr=8,pt=8,pb=22,iw=W-pl-pr,ih=H-pt-pb;
+  const t0=addDays(today0(),-days).getTime(),t1=today0().getTime();
+  const vals=pts.map(p=>p[key]).concat(ref!=null?[ref]:[]);
+  let lo=Math.min(...vals),hi=Math.max(...vals);const pad=Math.max(.5,(hi-lo)*.15);lo-=pad;hi+=pad;
+  const x=d=>pl+(parseD(d).getTime()-t0)/(t1-t0)*iw,y=v=>pt+ih-(v-lo)/(hi-lo)*ih;
+  const roll=pts.map(p=>({d:p.date,v:bioAvg(key,7,p.date)}));
+  const dots=pts.map(p=>`<circle cx="${x(p.date).toFixed(1)}" cy="${y(p[key]).toFixed(1)}" r="2.6" fill="var(--muted)" opacity=".55"/>`).join('');
+  const line=roll.map((r,i)=>(i?'L':'M')+x(r.d).toFixed(1)+','+y(r.v).toFixed(1)).join('');
+  const refL=ref!=null?`<line x1="${pl}" x2="${W-pr}" y1="${y(ref)}" y2="${y(ref)}" stroke="var(--z3)" stroke-dasharray="5 4"/>`:'';
+  const yt=[lo+pad,(lo+hi)/2,hi-pad].map(v=>`<text x="${pl-4}" y="${y(v)+4}" text-anchor="end">${fmt(v,key==='poids'?1:0)}</text>`).join('');
+  const xt=[0,.25,.5,.75,1].map(f=>{const d=new Date(t0+(t1-t0)*f);return`<text x="${pl+iw*f}" y="${H-6}" text-anchor="${f===0?"start":f===1?"end":"middle"}">${d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'})}</text>`}).join('');
+  return`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Évolution ${key}">${refL}${yt}${xt}${dots}<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.2"/></svg>`;
+}
+function renderBio(){
+  if(!$('#bDate').value)$('#bDate').value=isoDate(new Date());
+  const p=DB.profile,b=bioSorted();
+  const w7=bioAvg('poids',7),f7=bioAvg('fcRepos',7),base=fcBaseline(),tr=weightTrend();
+  const lastF=[...b].reverse().find(x=>x.fcRepos!=null),lastW=[...b].reverse().find(x=>x.poids!=null);
+  const dF=lastF&&base!=null?lastF.fcRepos-base:null;
+  const k=[
+    [lastW?fmt(lastW.poids,1)+' kg':'—','Dernier poids'+(lastW?' ('+lastW.date.slice(5).split('-').reverse().join('/')+')':''),''],
+    [w7!=null?fmt(w7,1)+' kg':'—','Poids moyen 7 j',''],
+    [w7!=null&&p.poidsForme?(w7-p.poidsForme>0?'+':'')+fmt(w7-p.poidsForme,1)+' kg':'—','Écart au poids de forme',w7!=null&&p.poidsForme?(w7-p.poidsForme>2?'orange':'green'):''],
+    [tr!=null?(tr>0?'+':'')+fmt(tr,2)+' kg/sem':'—','Tendance 28 j',''],
+    [lastF?lastF.fcRepos+' bpm':'—','Dernière FC repos',dF==null?'':dF>=8?'red':dF>=5?'orange':'green'],
+    [base!=null?Math.round(base)+' bpm':'—','FC repos de référence (28 j)','']];
+  $('#bKpis').innerHTML=k.map(([v,s,c])=>`<div class="kpi ${c}"><b>${v}</b><span>${s}</span></div>`).join('');
+  const days=+$('#bRange').value;
+  $('#bChartP').innerHTML=miniChart('poids',days,p.poidsForme);
+  $('#bChartF').innerHTML=miniChart('fcRepos',days,base);
+  $('#tBio').innerHTML=b.length?'<tr><th>Date</th><th class="num">Poids</th><th class="num">FC repos</th><th class="num">Écart FC</th><th>Note</th><th></th></tr>'+
+    [...b].reverse().slice(0,60).map(x=>`<tr><td>${x.date}</td><td class="num">${x.poids!=null?fmt(x.poids,1):''}</td><td class="num">${x.fcRepos??''}</td>
+      <td class="num">${x.fcRepos!=null&&base!=null?((x.fcRepos-base>0?'+':'')+Math.round(x.fcRepos-base)):''}</td><td>${esc(x.note||'')}</td>
+      <td><button class="btn small ghost" data-bedit="${x.date}">Modifier</button> <button class="btn small danger" data-bdel="${x.date}">✕</button></td></tr>`).join('')
+    :'<tr><td class="muted">Aucune mesure. Saisis ta première mesure ci-dessus.</td></tr>';
+}
+function bioUpsert(date,vals){
+  DB.bio=DB.bio||[];let e=DB.bio.find(x=>x.date===date);
+  if(!e){e={date};DB.bio.push(e)}
+  for(const [k,v] of Object.entries(vals))if(v!=null&&v!=='')e[k]=v;
+  return e;
+}
+$('#btnBio').onclick=()=>{
+  const date=$('#bDate').value,w=n($('#bPoids').value),f=n($('#bFc').value),note=$('#bNote').value.trim();
+  if(!date)return flash('#msgBio','Choisis une date.',true);
+  if(w==null&&f==null)return flash('#msgBio','Saisis au moins le poids ou la FC de repos.',true);
+  if(w!=null&&(w<35||w>150))return flash('#msgBio','Poids hors plage (35-150 kg).',true);
+  if(f!=null&&(f<30||f>110))return flash('#msgBio','FC de repos hors plage (30-110 bpm).',true);
+  bioUpsert(date,{poids:w,fcRepos:f,note});
+  syncProfileFromBio();save();render();
+  $('#bPoids').value='';$('#bFc').value='';$('#bNote').value='';
+  flash('#msgBio',`Mesure du ${date} enregistrée. Profil mis à jour : ${fmt(DB.profile.poids,1)} kg, FC repos ${DB.profile.fcRepos} bpm (moyennes 7 j).`);
+};
+$('#tBio').onclick=e=>{
+  const ed=e.target.closest('[data-bedit]'),del=e.target.closest('[data-bdel]');
+  if(ed){const x=DB.bio.find(b=>b.date===ed.dataset.bedit);$('#bDate').value=x.date;$('#bPoids').value=x.poids??'';$('#bFc').value=x.fcRepos??'';$('#bNote').value=x.note||'';$('#bDate').scrollIntoView({behavior:'smooth',block:'center'})}
+  if(del&&confirm('Supprimer la mesure du '+del.dataset.bdel+' ?')){DB.bio=DB.bio.filter(b=>b.date!==del.dataset.bdel);syncProfileFromBio();save();render()}
+};
+$('#bRange').onchange=renderBio;
+$('#fileBio').onchange=async e=>{
+  const file=e.target.files[0];if(!file)return;
+  try{
+    const rows=parseCsv(await file.text());const h=rows.shift().map(x=>x.trim().toLowerCase());
+    const find=re=>h.findIndex(x=>re.test(x));
+    const iD=find(/date|jour|day/),iW=find(/poids|weight|masse/),iF=find(/repos|resting|rhr/);
+    if(iD<0||(iW<0&&iF<0))throw new Error('colonnes date + poids ou FC repos introuvables');
+    let nb=0,bad=0;
+    for(const r of rows){
+      let ds=(r[iD]||'').trim();let d=null;
+      const fr=ds.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/);   // jj/mm/aaaa
+      if(fr)d=`${fr[3]}-${fr[2].padStart(2,'0')}-${fr[1].padStart(2,'0')}`;else{const t=parseTime(ds);if(t)d=isoDate(t)}
+      const w=iW>=0?n(String(r[iW]).replace(/[^\d.,]/g,'')):null,f=iF>=0?n(String(r[iF]).replace(/[^\d.,]/g,'')):null;
+      if(!d||(w==null&&f==null)){bad++;continue}
+      bioUpsert(d,{poids:w!=null&&w>=35&&w<=150?w:null,fcRepos:f!=null&&f>=30&&f<=110?Math.round(f):null});nb++;
+    }
+    syncProfileFromBio();save();render();
+    flash('#msgBioCsv',`${nb} mesure(s) importée(s)${bad?', '+bad+' ligne(s) ignorée(s)':''}.`);
+  }catch(err){flash('#msgBioCsv','Import impossible : '+err.message,true)}
+  e.target.value='';
+};
+
 const _render=render;
-render=function(){_render();renderAnalyse();simPrefill();
+render=function(){_render();renderBio();renderAnalyse();simPrefill();
   const p=DB.profile;$('#profDate').textContent=p.recalAt?`Dernier recalage : ${new Date(p.recalAt).toLocaleDateString('fr-FR')}. Le recalage se fait dans l'onglet Analyse.`:'Valeurs jamais recalées sur tes données : passe par l\'onglet Analyse.'};
 
 render();
