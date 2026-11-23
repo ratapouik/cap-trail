@@ -5,13 +5,22 @@
 //   POST /refresh  {refresh_token}  -> renouvelle le jeton d'accès (valable 6 h)
 //   GET  /api/...                   -> relaie la requête vers https://www.strava.com/api/v3/...
 //
+//   GET  /runalyze/...              -> relaie vers https://runalyze.com/api/v1/... (lecture seule)
+//                                      avec le jeton Personal API Runalyze gardé côté serveur.
+//                                      Protégé : exige un jeton Strava valide appartenant au propriétaire.
+//
 // Variables à définir dans Cloudflare (Settings > Variables and Secrets) :
 //   STRAVA_CLIENT_ID       identifiant de l'application Strava
 //   STRAVA_CLIENT_SECRET   clé secrète (à déclarer en « Secret »)
+//   RUNALYZE_TOKEN         jeton Personal API Runalyze (à déclarer en « Secret »)
+//   OWNER_ATHLETE_ID       facultatif, id Strava autorisé à lire Runalyze (défaut 27213731)
 //   ALLOWED_ORIGIN         facultatif, par défaut https://ratapouik.github.io
 //                          (plusieurs origines possibles, séparées par des virgules)
 
 const DEFAULT_ORIGIN = 'https://ratapouik.github.io';
+const DEFAULT_OWNER = '27213731';
+// Lecture seule, chemins limités aux données de santé et statistiques
+const RUNALYZE_PATHS = /^\/(metrics\/(heartRateRest|hrv|sleep|bodyComposition|latest)|statistics\/(current|prognosis))$/;
 
 export default {
   async fetch(req, env) {
@@ -30,9 +39,31 @@ export default {
 
     const url = new URL(req.url);
     if (url.pathname === '/' && req.method === 'GET') {
-      return json({ message: 'Relais Strava Cap Trail opérationnel', configure: !!(env.STRAVA_CLIENT_ID && env.STRAVA_CLIENT_SECRET) }, 200, cors);
+      return json({ message: 'Relais Strava Cap Trail opérationnel', configure: !!(env.STRAVA_CLIENT_ID && env.STRAVA_CLIENT_SECRET), runalyze: !!env.RUNALYZE_TOKEN }, 200, cors);
     }
     if (!okOrigin) return json({ message: 'Origine non autorisée : ' + (origin || 'aucune') }, 403, cors);
+
+    // Runalyze : lecture seule, réservée au propriétaire authentifié par Strava
+    if (url.pathname.startsWith('/runalyze/')) {
+      try {
+        if (req.method !== 'GET') return json({ message: 'Lecture seule' }, 405, cors);
+        if (!env.RUNALYZE_TOKEN) return json({ message: 'Relais non configuré : RUNALYZE_TOKEN manquant' }, 500, cors);
+        const path = url.pathname.slice('/runalyze'.length);
+        if (!RUNALYZE_PATHS.test(path)) return json({ message: 'Chemin Runalyze non autorisé' }, 404, cors);
+        const auth = req.headers.get('Authorization') || '';
+        if (!/^Bearer \S+$/.test(auth)) return json({ message: 'Connexion Strava requise' }, 401, cors);
+        const me = await fetch('https://www.strava.com/api/v3/athlete', { headers: { Authorization: auth } });
+        if (!me.ok) return json({ message: 'Jeton Strava invalide ou expiré' }, 401, cors);
+        const athlete = await me.json().catch(() => ({}));
+        if (String(athlete.id) !== String(env.OWNER_ATHLETE_ID || DEFAULT_OWNER)) return json({ message: 'Compte non autorisé' }, 403, cors);
+        const r = await fetch('https://runalyze.com/api/v1' + path + url.search, {
+          headers: { token: env.RUNALYZE_TOKEN, Accept: 'application/json' },
+        });
+        return new Response(r.body, { status: r.status, headers: { ...cors, 'Content-Type': r.headers.get('Content-Type') || 'application/json' } });
+      } catch (e) {
+        return json({ message: 'Erreur du relais Runalyze : ' + e.message }, 502, cors);
+      }
+    }
     if (!env.STRAVA_CLIENT_ID || !env.STRAVA_CLIENT_SECRET) {
       return json({ message: 'Relais non configuré : STRAVA_CLIENT_ID ou STRAVA_CLIENT_SECRET manquant' }, 500, cors);
     }

@@ -1,0 +1,11 @@
+# Déploiement du relais par Cloudflare Workers Builds (connexion au dépôt GitHub, dossier racine « worker »)
+name = "cap-trail-strava"
+main = "strava-relay.js"
+compatibility_date = "2026-11-23"
+
+# Conserve les variables et secrets définis dans le tableau de bord Cloudflare
+# (STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, RUNALYZE_TOKEN) lors de chaque déploiement
+keep_vars = true
+
+[observability]
+enabled = true

@@ -173,6 +173,12 @@ svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
 <!-- BIOMETRIE -->
 <section id="bio">
   <div class="card">
+    <h2>Synchronisation Runalyze (Garmin)</h2>
+    <p class="muted" style="margin-top:0" id="rzStatus">FC de repos, VFC nocturne, sommeil et pesées récupérés depuis Runalyze via le relais Cloudflare. Nécessite la connexion Strava (sert d'authentification au relais). Tes saisies manuelles restent prioritaires.</p>
+    <div class="row"><button class="btn" id="btnRz">Synchroniser Runalyze</button></div>
+    <div class="msg" id="msgRz"></div>
+  </div>
+  <div class="card">
     <h2>Mesure du jour</h2>
     <p class="muted" style="margin-top:0">FC de repos : à prendre le matin au réveil, allongé, avant de te lever (ou la valeur nocturne de la montre, toujours la même source). Poids : le matin, à jeun, après passage aux toilettes.</p>
     <div class="grid">
@@ -193,6 +199,8 @@ svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
     <div class="legend" style="margin-bottom:6px"><span><i style="background:var(--line)"></i>mesure du jour</span><span><i style="background:var(--accent)"></i>moyenne 7 j</span><span><i style="background:var(--z3)"></i>référence</span></div>
     <h3 style="font-size:13px;margin:8px 0 2px">Poids (kg)</h3><div id="bChartP"></div>
     <h3 style="font-size:13px;margin:12px 0 2px">FC de repos (bpm)</h3><div id="bChartF"></div>
+    <h3 style="font-size:13px;margin:12px 0 2px">VFC nocturne (RMSSD, ms)</h3><div id="bChartH"></div>
+    <h3 style="font-size:13px;margin:12px 0 2px">Sommeil (heures)</h3><div id="bChartS"></div>
   </div>
   <div class="card">
     <h2>Historique</h2>
@@ -614,7 +622,7 @@ $('#btnStConnect').onclick=()=>{
     response_type:'code',approval_prompt:'auto',scope:'read,activity:read_all,profile:read_all'});
 };
 $('#btnStSync').onclick=()=>stSync(false);
-$('#btnStQuick').onclick=()=>stSync(false);
+$('#btnStQuick').onclick=async()=>{await stSync(false);if(ST.rzSync)runalyzeSync()};   // synchro Runalyze enchaînée si déjà utilisée
 $('#btnStFull').onclick=()=>stSync(true);
 $('#btnStOff').onclick=()=>{if(!confirm('Déconnecter Strava ? Les séances déjà synchronisées restent dans le journal.'))return;
   ST={clientId:ST.clientId,relay:ST.relay};stSave();render();flash('#msgSt','Strava déconnecté. Tu peux aussi retirer l\'accès sur strava.com > Paramètres > Mes applications.')};
@@ -649,7 +657,7 @@ const SPORT_HRR={trail:.62,route:.62,renfo:.45,velo:.5,ski:.55,marche:.4,autre:.
    Si les temps par zone sont connus (flux Strava), on somme zone par zone (plus juste que la moyenne).
    Sans FC : RPE si saisi (HRr ≈ RPE/10), sinon valeur type du sport. */
 // FC repos utilisée pour une date : moyenne biométrique des 7 jours précédents si disponible, sinon valeur du profil
-function restAt(date){if(date&&DB.bio?.length){const v=bioAvg('fcRepos',7,date);if(v!=null)return v}return DB.profile.fcRepos||50}
+function restAt(date){if(date&&DB.bio?.length){const v=bioMedian('fcRepos',28,date);if(v!=null)return v}return DB.profile.fcRepos||50}
 function hrrOf(fc,date){const p=DB.profile,r0=restAt(date);const r=(fc-r0)/((p.fcMax||188)-r0);return Math.max(0,Math.min(1.05,r))}
 const trimpK=h=>.64*Math.exp(1.92*h);
 function loadOf(s){
@@ -827,10 +835,10 @@ function recal(){
     else R.push({k,label,cur:p[k],prop:null,unit:'m/h',how:'Pas de montée analysée sur 4 mois. Lance « Analyser les séances ».',conf:'—'});
   }
   // Poids et FC repos : la biométrie saisie dans l'appli prime ; Strava seulement à défaut
-  const w7=bioAvg('poids',7),f7=bioAvg('fcRepos',7);
+  const w7=bioAvg('poids',7),f7=bioMedian('fcRepos',28);
   if(w7!=null)R.push({k:'poids',label:'Poids',cur:p.poids,prop:Math.round(w7*10)/10,unit:'kg',how:'Moyenne des pesées des 7 derniers jours (onglet Biométrie), mise à jour automatique.',conf:'bonne'});
   else if(ST.athlete?.weight)R.push({k:'poids',label:'Poids',cur:p.poids,prop:Math.round(ST.athlete.weight*10)/10,unit:'kg',how:'Poids du profil Strava (pas de pesée saisie dans l\'appli).',conf:'moyenne'});
-  if(f7!=null)R.push({k:'fcRepos',label:'FC repos',cur:p.fcRepos,prop:Math.round(f7),unit:'bpm',how:'Moyenne des mesures des 7 derniers jours (onglet Biométrie), mise à jour automatique.',conf:'bonne'});
+  if(f7!=null)R.push({k:'fcRepos',label:'FC repos',cur:p.fcRepos,prop:Math.round(f7),unit:'bpm',how:'Médiane des mesures des 28 derniers jours (onglet Biométrie), mise à jour automatique.',conf:'bonne'});
   else R.push({k:'fcRepos',label:'FC repos',cur:p.fcRepos,prop:null,unit:'bpm',how:'Aucune mesure : la valeur par défaut fausse le calcul de charge. Saisis-la dans l\'onglet Biométrie.',conf:'—'});
   return R;
 }
@@ -880,7 +888,8 @@ function renderAnalyse(){
     [w28.easyPct==null?'—':Math.round(w28.easyPct)+' %','Endurance facile 28 j',w28.easyPct==null?'':w28.easyPct<70?'red':w28.easyPct<80?'orange':'green'],
     [fmt(w28.renfo/4,1),'Renfo / semaine (28 j)',w28.renfo<4?(w28.renfo?'orange':'red'):'green']];
   $('#aKpis').innerHTML=k.map(([b,s,c])=>`<div class="kpi ${c}"><b>${b}</b><span>${s}</span></div>`).join('');
-  $('#aAlerts').innerHTML=alerts().map(([c,who,t,txt])=>`<div class="alert ${c}"><div><span class="who">${who}</span><b>${esc(t)}</b><span class="muted">${esc(txt)}</span></div></div>`).join('');
+  $('#aAlerts').innerHTML=alerts().map(([c,who,t,txt])=>`<div class="alert ${c}"><div><span class="who">${who}</span><b>${esc(t)}</b><span class="muted">${esc(txt)}</span></div></div>`).join('')+
+    (ST.rzStats?`<p class="muted" style="font-size:13px;margin:8px 0 0">Contrôle croisé Runalyze (${new Date(ST.rzStatsAt).toLocaleDateString('fr-FR')}) : forme ${ST.rzStats.fitness??'—'}, fatigue ${ST.rzStats.fatigue??'—'}, fraîcheur ${ST.rzStats.performance??'—'}, ratio A:C ${ST.rzStats.acuteChronicWorkloadRatio!=null?fmt(ST.rzStats.acuteChronicWorkloadRatio>10?ST.rzStats.acuteChronicWorkloadRatio/100:ST.rzStats.acuteChronicWorkloadRatio,2):'—'}${ST.rzStats.restDays!=null?`, ${fmt(ST.rzStats.restDays,1)} j de repos conseillés`:''}.</p>`:'');
   const range=+$('#aRange').value;$('#aChart').innerHTML=lineChart(pm.slice(-range));
   const todo=detailTodo().length,done=DB.sessions.filter(s=>s.detail&&!s.detail.empty).length;
   $('#aDetailInfo').textContent=`${done} séance(s) déjà analysée(s) en détail, ${todo} en attente (12 derniers mois). Chaque séance analysée donne le temps réel par zone, la meilleure VAM sur 10 et 30 min et la dérive cardiaque. Limite Strava : 20 séances par clic.`;
@@ -895,7 +904,8 @@ function renderAnalyse(){
     <p><b>Forme / fatigue / fraîcheur</b> : moyennes exponentielles de la charge quotidienne sur 42 j (CTL) et 7 j (ATL) ; TSB = CTL − ATL de la veille. Ratio aigu/chronique = ATL/CTL : zone sûre 0,8 – 1,3, risque au-delà de 1,5.</p>
     <p><b>VMA</b> : vitesse d'un effort quasi maximal (FC ≥ 90 % FC max) divisée par la part de VMA tenable sur sa durée (100 % jusqu'à 6 min, puis 1 − 0,055·ln(durée/6)).</p>
     <p><b>VAM</b> : meilleur dénivelé net par heure sur 10 min de temps en mouvement, pente 6-18 % (courable) ou &gt; 18 % (raide). Si la FC était sous le seuil, extrapolation prudente vers 90 % de HRR (exposant 0,75, plafond +35 %).</p>
-    <p><b>Biométrie</b> : poids et FC repos du profil = moyennes des 7 derniers jours saisis dans l'appli (prioritaires sur Strava). Chaque séance utilise la FC repos de sa propre semaine pour le TRIMP. Alerte si la FC repos du jour dépasse de 5 bpm (orange) ou 8 bpm / 2 jours à +5 (rouge) la médiane des 28 jours précédents, ou si le poids varie de plus de 1 %/sem (régression sur 28 j).</p>
+    <p><b>VFC et sommeil (Runalyze / Garmin)</b> : alerte si la VFC moyenne des 3 dernières nuits passe sous 92 % (orange) ou 85 % (rouge) de la médiane des 30 jours précédents ; si le sommeil moyen des 3 dernières nuits passe sous 6 h 30 (orange) ou 5 h (rouge).</p>
+    <p><b>Biométrie</b> : poids du profil = moyenne 7 j, FC repos = médiane 28 j (saisie manuelle prioritaire sur Runalyze, elle-même prioritaire sur Strava). Chaque séance utilise la FC repos médiane des 28 jours qui la précèdent pour le TRIMP. Alerte si la FC repos du jour dépasse de 5 bpm (orange) ou 8 bpm / 2 jours à +5 (rouge) la médiane des 28 jours précédents, ou si le poids varie de plus de 1 %/sem (régression sur 28 j).</p>
     <p><b>Dérive cardiaque</b> : efficacité = (distance + 10 × D+)/temps ÷ FC, comparée entre 1<sup>re</sup> et 2<sup>de</sup> moitié. Au-delà de 5-8 %, l'endurance de fond ou le ravitaillement lâchent.</p>`;
 }
 $("#aRange").onchange=renderAnalyse;
@@ -1022,8 +1032,13 @@ function weightTrend(days=28){
   return pts.reduce((t,p)=>t+(p.x-mx)*(p.y-my),0)/den*7;
 }
 // Le profil suit automatiquement la biométrie (moyenne 7 j) : utilisé par le TRIMP, les alertes et la prédiction
+function bioMedian(key,days,endDate){
+  const end=endDate?parseD(endDate):today0(),from=addDays(end,-days);
+  return median(bioSorted().filter(b=>b[key]!=null&&parseD(b.date)>from&&parseD(b.date)<=end).map(b=>b[key]));
+}
+// Poids : moyenne 7 j ; FC repos : médiane 28 j (robuste aux jours de fatigue ou de maladie)
 function syncProfileFromBio(){
-  const p=DB.profile,w=bioAvg('poids',7),f=bioAvg('fcRepos',7);
+  const p=DB.profile,w=bioAvg('poids',7),f=bioMedian('fcRepos',28);
   if(w!=null)p.poids=Math.round(w*10)/10;
   if(f!=null)p.fcRepos=Math.round(f);
   if(w!=null||f!=null)p.bioAt=new Date().toISOString();
@@ -1041,6 +1056,13 @@ function bioAlerts(){
     const f7=bioAvg('fcRepos',7),f28=bioAvg('fcRepos',28);
     if(f7!=null&&f28!=null&&f7-f28>=3)A.push(['orange','Data','Fatigue de fond possible',`FC de repos moyenne 7 j : ${fmt(f7,1)} bpm contre ${fmt(f28,1)} sur 28 j. Surveille la charge.`]);
   }
+  const h=hrvState();
+  if(h.ratio!=null&&(today0()-parseD(h.lastDate))/DAY<=3){
+    if(h.cls==='red')A.push(['red','Data','VFC effondrée',`VFC moyenne des 3 dernières nuits ${Math.round(h.avg3)} ms pour une référence de ${Math.round(h.base)} ms (${Math.round((h.ratio-1)*100)} %). Système nerveux sous tension : repos ou footing très facile, pas d'intensité.`]);
+    else if(h.cls==='orange')A.push(['orange','Data','VFC en baisse',`VFC moyenne des 3 dernières nuits ${Math.round(h.avg3)} ms pour une référence de ${Math.round(h.base)} ms (${Math.round((h.ratio-1)*100)} %). Garde les séances en endurance facile.`]);
+  }
+  const sl=sleepState();
+  if(sl.avg3!=null&&sl.cls!=='green')A.push([sl.cls,'Data','Sommeil insuffisant',`${fmtH(sl.avg3)} en moyenne sur les ${sl.n} dernières nuits (cible ≥ 7 h). La récupération se fait la nuit : priorité au sommeil avant d'ajouter de la charge.`]);
   const tr=weightTrend(),w7=bioAvg('poids',7);
   if(tr!=null&&w7){const pct=tr/w7*100;
     if(pct<-1)A.push(['orange','Data','Perte de poids rapide',`${fmt(tr,2)} kg/sem (${fmt(pct,1)} %/sem). Au-delà de 1 %/sem, risque de perte musculaire et de baisse de récupération : garde un apport suffisant les jours chargés.`]);
@@ -1060,7 +1082,7 @@ function miniChart(key,days,ref){
   const dots=pts.map(p=>`<circle cx="${x(p.date).toFixed(1)}" cy="${y(p[key]).toFixed(1)}" r="2.6" fill="var(--muted)" opacity=".55"/>`).join('');
   const line=roll.map((r,i)=>(i?'L':'M')+x(r.d).toFixed(1)+','+y(r.v).toFixed(1)).join('');
   const refL=ref!=null?`<line x1="${pl}" x2="${W-pr}" y1="${y(ref)}" y2="${y(ref)}" stroke="var(--z3)" stroke-dasharray="5 4"/>`:'';
-  const yt=[lo+pad,(lo+hi)/2,hi-pad].map(v=>`<text x="${pl-4}" y="${y(v)+4}" text-anchor="end">${fmt(v,key==='poids'?1:0)}</text>`).join('');
+  const yt=[lo+pad,(lo+hi)/2,hi-pad].map(v=>`<text x="${pl-4}" y="${y(v)+4}" text-anchor="end">${fmt(v,key==='poids'||key==='sommeilH'?1:0)}</text>`).join('');
   const xt=[0,.25,.5,.75,1].map(f=>{const d=new Date(t0+(t1-t0)*f);return`<text x="${pl+iw*f}" y="${H-6}" text-anchor="${f===0?"start":f===1?"end":"middle"}">${d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'})}</text>`}).join('');
   return`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Évolution ${key}">${refL}${yt}${xt}${dots}<path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.2"/></svg>`;
 }
@@ -1076,23 +1098,75 @@ function renderBio(){
     [w7!=null&&p.poidsForme?(w7-p.poidsForme>0?'+':'')+fmt(w7-p.poidsForme,1)+' kg':'—','Écart au poids de forme',w7!=null&&p.poidsForme?(w7-p.poidsForme>2?'orange':'green'):''],
     [tr!=null?(tr>0?'+':'')+fmt(tr,2)+' kg/sem':'—','Tendance 28 j',''],
     [lastF?lastF.fcRepos+' bpm':'—','Dernière FC repos',dF==null?'':dF>=8?'red':dF>=5?'orange':'green'],
-    [base!=null?Math.round(base)+' bpm':'—','FC repos de référence (28 j)','']];
+    [base!=null?Math.round(base)+' bpm':'—','FC repos de référence (28 j)',''],
+    ...(()=>{const h=hrvState(),s=sleepState();return[
+      [h.last!=null?h.last+' ms':'—','VFC dernière nuit'+(h.base?` (réf. ${Math.round(h.base)})`:''),h.cls],
+      [s.avg3!=null?fmtH(s.avg3):'—','Sommeil moyen 3 nuits',s.cls]]})()];
   $('#bKpis').innerHTML=k.map(([v,s,c])=>`<div class="kpi ${c}"><b>${v}</b><span>${s}</span></div>`).join('');
   const days=+$('#bRange').value;
   $('#bChartP').innerHTML=miniChart('poids',days,p.poidsForme);
   $('#bChartF').innerHTML=miniChart('fcRepos',days,base);
-  $('#tBio').innerHTML=b.length?'<tr><th>Date</th><th class="num">Poids</th><th class="num">FC repos</th><th class="num">Écart FC</th><th>Note</th><th></th></tr>'+
+  $('#bChartH').innerHTML=miniChart('hrv',days,hrvState().base);
+  $('#bChartS').innerHTML=miniChart('sommeilH',days,7);
+  $('#tBio').innerHTML=b.length?'<tr><th>Date</th><th class="num">Poids</th><th class="num">FC repos</th><th class="num">Écart FC</th><th class="num">VFC</th><th class="num">Sommeil</th><th>Note</th><th></th></tr>'+
     [...b].reverse().slice(0,60).map(x=>`<tr><td>${x.date}</td><td class="num">${x.poids!=null?fmt(x.poids,1):''}</td><td class="num">${x.fcRepos??''}</td>
-      <td class="num">${x.fcRepos!=null&&base!=null?((x.fcRepos-base>0?'+':'')+Math.round(x.fcRepos-base)):''}</td><td>${esc(x.note||'')}</td>
+      <td class="num">${x.fcRepos!=null&&base!=null?((x.fcRepos-base>0?'+':'')+Math.round(x.fcRepos-base)):''}</td>
+      <td class="num">${x.hrv??''}</td><td class="num">${x.sommeilH!=null?fmtH(x.sommeilH)+(x.sommeilQ!=null?` <span class="muted">(${x.sommeilQ})</span>`:''):''}</td><td>${esc(x.note||'')}</td>
       <td><button class="btn small ghost" data-bedit="${x.date}">Modifier</button> <button class="btn small danger" data-bdel="${x.date}">✕</button></td></tr>`).join('')
     :'<tr><td class="muted">Aucune mesure. Saisis ta première mesure ci-dessus.</td></tr>';
 }
-function bioUpsert(date,vals){
+// src = 'manuel' (saisie / CSV) ou 'runalyze' ; une valeur saisie à la main n'est jamais écrasée par Runalyze
+function bioUpsert(date,vals,src='manuel'){
   DB.bio=DB.bio||[];let e=DB.bio.find(x=>x.date===date);
   if(!e){e={date};DB.bio.push(e)}
-  for(const [k,v] of Object.entries(vals))if(v!=null&&v!=='')e[k]=v;
+  e.src=e.src||{};
+  for(const [k,v] of Object.entries(vals)){if(v==null||v==='')continue;
+    if(src==='runalyze'&&k!=='note'&&e[k]!=null&&e.src[k]!=='runalyze')continue;
+    e[k]=v;if(k!=='note')e.src[k]=src}
   return e;
 }
+const fmtH=h=>{const m=Math.round(h*60);return Math.floor(m/60)+' h '+String(m%60).padStart(2,'0')};
+// VFC : référence = médiane des 30 jours avant les 3 dernières mesures ; alerte si moyenne des 3 dernières < 90 % de la référence
+function hrvState(){
+  const v=bioSorted().filter(x=>x.hrv!=null);if(!v.length)return{last:null,base:null,cls:''};
+  const last=v[v.length-1],ref=v.filter(x=>parseD(x.date)<=addDays(parseD(last.date),-3)&&parseD(x.date)>addDays(parseD(last.date),-33)).map(x=>x.hrv);
+  const base=ref.length>=5?median(ref):null,a3=avg(v.slice(-3).map(x=>x.hrv));
+  const r=base?a3/base:null;return{last:last.hrv,lastDate:last.date,base,avg3:a3,ratio:r,cls:r==null?'':r<.85?'red':r<.92?'orange':'green'};
+}
+function sleepState(){
+  const s=bioSorted().filter(x=>x.sommeilH!=null&&parseD(x.date)>addDays(today0(),-5)).slice(-3);
+  if(!s.length)return{avg3:null,cls:''};const a=avg(s.map(x=>x.sommeilH));
+  return{avg3:a,n:s.length,cls:a<5?'red':a<6.5?'orange':'green'};
+}
+
+/* --- Synchro Runalyze (via le relais : /runalyze/... authentifié par le jeton Strava) --- */
+async function rzGet(path){const t=await stToken();return relay('/runalyze'+path,{headers:{Authorization:'Bearer '+t,Accept:'application/json'}})}
+async function rzAll(path){
+  const out=[];for(let page=1;page<=8;page++){
+    const r=await rzGet(`${path}?itemsPerPage=500&page=${page}`);
+    const arr=Array.isArray(r)?r:(r['hydra:member']||r.member||[]);out.push(...arr);if(arr.length<500)break}
+  return out;
+}
+const rzDate=(dt,shiftEvening)=>{if(!dt)return null;const s=String(dt);let d=s.slice(0,10);
+  if(shiftEvening){const h=+s.slice(11,13);if(h>=15)d=isoDate(addDays(parseD(d),1))}return d};   // sommeil commencé le soir → nuit datée du réveil
+async function runalyzeSync(){
+  const btn=$('#btnRz');btn.disabled=true;flash('#msgRz','Synchronisation Runalyze en cours…');
+  try{
+    if(!ST.refresh)throw new Error('connecte d\'abord Strava (onglet Import / Export) : il sert d\'authentification au relais');
+    const lim=dayKey(addDays(today0(),-400));let nb={fc:0,hrv:0,sl:0,w:0};
+    for(const x of await rzAll('/metrics/heartRateRest')){const d=rzDate(x.date_time);if(!d||d<lim||!x.heart_rate)continue;bioUpsert(d,{fcRepos:Math.round(x.heart_rate)},'runalyze');nb.fc++}
+    for(const x of await rzAll('/metrics/hrv')){const d=rzDate(x.date_time);const v=x.rmssd??x.hrv;if(!d||d<lim||!v)continue;bioUpsert(d,{hrv:Math.round(v)},'runalyze');nb.hrv++}
+    for(const x of await rzAll('/metrics/sleep')){if(x.is_nap)continue;const d=rzDate(x.date_time,true);if(!d||d<lim||!x.duration)continue;
+      bioUpsert(d,{sommeilH:Math.round(x.duration/60*100)/100,sommeilQ:x.quality_100??x.quality??null},'runalyze');nb.sl++}
+    for(const x of await rzAll('/metrics/bodyComposition')){const d=rzDate(x.date_time);if(!d||d<lim||!x.weight)continue;bioUpsert(d,{poids:Math.round(x.weight*10)/10},'runalyze');nb.w++}
+    try{ST.rzStats=await rzGet('/statistics/current');ST.rzStatsAt=new Date().toISOString()}catch(e){}
+    ST.rzSync=new Date().toISOString();stSave();
+    syncProfileFromBio();save();render();
+    flash('#msgRz',`Runalyze : ${nb.fc} FC repos, ${nb.hrv} VFC, ${nb.sl} nuits, ${nb.w} pesées (400 derniers jours). Profil mis à jour.`);
+  }catch(e){flash('#msgRz','Synchronisation impossible : '+e.message,true)}
+  finally{btn.disabled=false}
+}
+$('#btnRz').onclick=runalyzeSync;
 $('#btnBio').onclick=()=>{
   const date=$('#bDate').value,w=n($('#bPoids').value),f=n($('#bFc').value),note=$('#bNote').value.trim();
   if(!date)return flash('#msgBio','Choisis une date.',true);
@@ -1102,7 +1176,7 @@ $('#btnBio').onclick=()=>{
   bioUpsert(date,{poids:w,fcRepos:f,note});
   syncProfileFromBio();save();render();
   $('#bPoids').value='';$('#bFc').value='';$('#bNote').value='';
-  flash('#msgBio',`Mesure du ${date} enregistrée. Profil mis à jour : ${fmt(DB.profile.poids,1)} kg, FC repos ${DB.profile.fcRepos} bpm (moyennes 7 j).`);
+  flash('#msgBio',`Mesure du ${date} enregistrée. Profil mis à jour : ${fmt(DB.profile.poids,1)} kg, FC repos ${DB.profile.fcRepos} bpm (poids moyen 7 j, FC repos médiane 28 j).`);
 };
 $('#tBio').onclick=e=>{
   const ed=e.target.closest('[data-bedit]'),del=e.target.closest('[data-bdel]');
