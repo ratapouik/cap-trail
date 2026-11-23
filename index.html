@@ -72,6 +72,7 @@ svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
   <nav id="tabs">
     <button data-t="journal" class="on">Journal</button>
     <button data-t="semaines">Semaines</button>
+    <button data-t="seances">Séances</button>
     <button data-t="analyse">Analyse</button>
     <button data-t="simulation">Simulation</button>
     <button data-t="bio">Biométrie</button>
@@ -96,6 +97,26 @@ svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
     <div class="scroll"><table id="tSessions"></table></div>
     <p class="muted" id="emptyJ" style="display:none">Aucune séance. Importe ton export Runalyze dans l'onglet « Import / Export » ou ajoute une séance.</p>
   </div>
+</section>
+
+<!-- SEANCES -->
+<section id="seances">
+  <div class="card" id="rdCard"></div>
+  <div class="card">
+    <h2>Que veux-tu faire ?</h2>
+    <div class="grid">
+      <label>Type de séance<select id="gType">
+        <option value="trail">Trail (extérieur)</option><option value="route">Course sur route / piste</option>
+        <option value="tapis">Salle — tapis de course</option><option value="elliptique">Salle — elliptique</option>
+        <option value="velo">Salle — vélo</option><option value="renfo">Renforcement</option></select></label>
+      <label>Intensité<select id="gInt">
+        <option value="recup">Récupération</option><option value="ef" selected>Endurance fondamentale</option>
+        <option value="seuil">Seuil</option><option value="puissance">Puissance</option><option value="fractionne">Fractionné</option></select></label>
+      <label>Durée totale (min, facultatif)<input type="number" id="gDur" min="15" max="300" step="5" placeholder="auto"></label>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="btnGen">Proposer des séances</button></div>
+  </div>
+  <div id="gOut"></div>
 </section>
 
 <!-- ANALYSE -->
@@ -1206,8 +1227,295 @@ $('#fileBio').onchange=async e=>{
   e.target.value='';
 };
 
+/* =====================================================================
+   SÉANCES : état de forme du jour + générateur de séances + export FIT
+   ===================================================================== */
+
+/* --- Score de forme (0-100) à partir de la charge et de la biométrie --- */
+function readiness(){
+  const pm=pmc(),last=pm[pm.length-1]||{tsb:0,acwr:null},F=[];let s=100;
+  const pen=(v,label,detail)=>{s-=v;F.push({v,label,detail})};
+  const ok=(label,detail)=>F.push({v:0,label,detail});
+  // fraîcheur (TSB)
+  if(last.tsb<-25)pen(25,'Fraîcheur',`TSB ${fmt(last.tsb,0)} : fatigue accumulée importante`);
+  else if(last.tsb<-10)pen(12,'Fraîcheur',`TSB ${fmt(last.tsb,0)} : fatigue modérée`);
+  else ok('Fraîcheur',`TSB ${fmt(last.tsb,0)}`);
+  // ratio aigu / chronique
+  if(last.acwr!=null){
+    if(last.acwr>1.5)pen(20,'Charge récente',`ratio ${fmt(last.acwr,2)} : pic de charge`);
+    else if(last.acwr>1.3)pen(10,'Charge récente',`ratio ${fmt(last.acwr,2)} : hausse rapide`);
+    else ok('Charge récente',`ratio ${fmt(last.acwr,2)}`)}
+  // VFC
+  const h=hrvState();
+  if(h.ratio!=null&&(today0()-parseD(h.lastDate))/DAY<=3){
+    if(h.ratio<.85)pen(25,'VFC',`${Math.round(h.avg3)} ms sur 3 nuits (${Math.round((h.ratio-1)*100)} % vs référence)`);
+    else if(h.ratio<.92)pen(12,'VFC',`${Math.round(h.avg3)} ms sur 3 nuits (${Math.round((h.ratio-1)*100)} % vs référence)`);
+    else ok('VFC',`${Math.round(h.avg3)} ms, dans ta norme`)}
+  // sommeil
+  const sl=sleepState();
+  if(sl.avg3!=null){
+    if(sl.avg3<5)pen(20,'Sommeil',`${fmtH(sl.avg3)} en moyenne`);
+    else if(sl.avg3<6.5)pen(10,'Sommeil',`${fmtH(sl.avg3)} en moyenne`);
+    else ok('Sommeil',`${fmtH(sl.avg3)} en moyenne`)}
+  // FC repos du jour
+  const base=fcBaseline(),lf=[...bioSorted()].reverse().find(x=>x.fcRepos!=null);
+  if(base!=null&&lf&&(today0()-parseD(lf.date))/DAY<=1){const d=lf.fcRepos-base;
+    if(d>=8)pen(20,'FC repos',`${lf.fcRepos} bpm (+${Math.round(d)} vs ${Math.round(base)})`);
+    else if(d>=5)pen(10,'FC repos',`${lf.fcRepos} bpm (+${Math.round(d)} vs ${Math.round(base)})`);
+    else ok('FC repos',`${lf.fcRepos} bpm (réf. ${Math.round(base)})`)}
+  // douleur signalée sur les 3 derniers jours
+  const pain=DB.sessions.find(x=>x.douleurs&&parseD(x.date)>addDays(today0(),-3));
+  if(pain)pen(15,'Douleur',`signalée le ${pain.date} : ${pain.douleurs}`);
+  s=Math.max(0,Math.min(100,s));
+  const lvl=s>=75?{k:'frais',t:'Frais',c:'green'}:s>=50?{k:'correct',t:'Correct',c:'green'}:s>=30?{k:'fatigue',t:'Fatigué',c:'orange'}:{k:'plat',t:'À plat',c:'red'};
+  return{score:Math.round(s),lvl,F,tsb:last.tsb,acwr:last.acwr};
+}
+// Verdict par intensité selon l'état de forme
+const INT_RANK={recup:0,ef:1,seuil:2,fractionne:3,puissance:3};
+function verdict(rd,int){
+  const r=INT_RANK[int];
+  if(rd.lvl.k==='plat')return r===0?{k:'ok'}:{k:'non',why:'État de forme trop bas : repos ou récupération seulement.'};
+  if(rd.lvl.k==='fatigue')return r<=1?{k:r===1?'allege':'ok',why:r===1?'Fatigue présente : durée réduite de 20 % et FC plafonnée en bas de Z2.':''}:{k:'non',why:'Fatigue marquée : une séance intense coûterait plus qu\'elle ne rapporte aujourd\'hui.'};
+  if(rd.lvl.k==='correct'&&r>=2)return{k:'allege',why:'Forme correcte mais pas optimale : volume de travail intense réduit d\'environ 25 %.'};
+  return{k:'ok'};
+}
+
+/* --- Cibles calculées depuis le profil --- */
+const P=()=>DB.profile;
+const HR=(a,b)=>({type:'hr',lo:Math.round(P().fcMax*a),hi:Math.round(P().fcMax*b)});         // fractions de FC max
+const SPD=(a,b)=>({type:'speed',lo:(P().vma||15)*a/3.6,hi:(P().vma||15)*b/3.6});             // fractions de VMA, en m/s
+const PWR=(a,b)=>({type:'power',lo:Math.round((P().ftp||200)*a),hi:Math.round((P().ftp||200)*b)}); // fractions de FTP
+const OPEN={type:'open'};
+const paceTxt=ms=>{const s=1000/ms;return Math.floor(s/60)+"'"+String(Math.round(s%60)).padStart(2,'0')+'"'};
+function targetTxt(t){
+  if(!t||t.type==='open')return'libre';
+  if(t.type==='hr')return`${t.lo}-${t.hi} bpm`;
+  if(t.type==='speed')return`${paceTxt(t.hi)}-${paceTxt(t.lo)} /km (${fmt(t.lo*3.6,1)}-${fmt(t.hi*3.6,1)} km/h)`;
+  if(t.type==='power')return`${t.lo}-${t.hi} W`;
+}
+// constructeurs d'étapes
+const st=(name,min,kind,target=OPEN,note='')=>({name,min,kind,target,note});
+const WU=(min,target,note='')=>st('Échauffement',min,'warmup',target,note);
+const CD=(min,target=HR(.55,.68),note='')=>st('Retour au calme',min,'cooldown',target,note);
+const reps=(n,work,rest)=>{const o=[];for(let i=1;i<=n;i++){o.push({...work,name:`${work.name} ${i}/${n}`});if(i<n||rest.keepLast)o.push({...rest})}return o};
+
+/* --- Bibliothèque : chaque modèle reçoit le temps disponible pour le corps de séance (min) --- */
+function vamTxt(f){const p=P();return p.vamCourable?` (≈ ${Math.round(p.vamCourable*f/10)*10} m/h)`:''}
+const LIB={
+ trail:{
+  recup:[c=>({t:'Footing de récupération sur plat',why:'Faire circuler sans charge mécanique : terrain plat et souple.',
+    steps:[WU(8,HR(.55,.66),'Marche 2 min puis trot'),st('Footing plat',c,'active',HR(.62,.70),'Marche en montée si ça dépasse'),CD(5)]})],
+  ef:[
+   c=>({t:'Sortie endurance vallonnée',why:'Base aérobie et économie en terrain varié, D+ modéré (≤ 20 m/km).',
+    steps:[WU(10,HR(.6,.7)),st('Endurance Z2',c,'active',HR(.70,.79),'Marche les montées raides pour rester en Z2'),CD(5)]}),
+   c=>({t:'Endurance + lignes droites',why:'Base aérobie avec rappel de foulée sans fatigue.',
+    steps:[WU(10,HR(.6,.7)),st('Endurance Z2',Math.max(10,c-8),'active',HR(.70,.79)),...reps(6,st('Ligne droite 20 s',.33,'active',OPEN,'Accélération progressive sur plat, relâché'),st('Récup trot',1,'rest',HR(.6,.75))),CD(5)]}),
+   c=>({t:'Rando-course en montée',why:'Travail spécifique montagne à faible intensité : alternance course / marche active en côte.',
+    steps:[WU(10,HR(.6,.7)),st('Montée course/marche',Math.round(c*.65),'active',HR(.72,.80),'Marche rapide bâtons dès que la pente > 15 %'),st('Descente souple',Math.round(c*.35),'active',HR(.6,.75),'Pas courts, regard loin'),CD(5)]})],
+  seuil:[
+   c=>{const n=Math.max(2,Math.min(4,Math.floor((c+3)/13)));return{t:`${n} × 10 min seuil en côte courable`,why:`Montée régulière 6-10 %, effort tenable 30-40 min${vamTxt(.85)}. Récupération en redescendant.`,
+    steps:[WU(15,HR(.6,.75),'Inclure 3 accélérations de 20 s'),...reps(n,st('Montée seuil',10,'active',HR(.84,.89)),st('Redescente trot',3,'rest',HR(.6,.75))),CD(10)]}},
+   c=>({t:'Tempo continu en terrain roulant',why:'Tenir une intensité de seuil longtemps sur sentier peu technique.',
+    steps:[WU(15,HR(.6,.75)),st('Tempo',Math.max(15,Math.min(35,c)),'active',HR(.82,.87),'Allure régulière, respiration contrôlée'),CD(10)]})],
+  puissance:[
+   c=>{const n=Math.max(6,Math.min(12,Math.floor(c/3)));return{t:`${n} × 1 min côte raide`,why:'Force spécifique en montée : pente 15-25 %, fréquence élevée, gainage tenu. Récupération complète en redescendant.',
+    steps:[WU(15,HR(.6,.75),'Gammes : talons-fesses, montées de genoux'),...reps(n,st('Côte raide',1,'active',HR(.88,.95),'Pas courts, bras actifs'),st('Redescente marche',2,'rest',HR(.55,.75))),CD(10)]}},
+   c=>{const n=Math.max(8,Math.min(12,Math.floor(c/2)));return{t:`${n} × 30 s bondissements en côte`,why:'Puissance et raideur du pied : montées bondissantes sur pente 8-12 %.',
+    steps:[WU(15,HR(.6,.75)),...reps(n,st('Bondissements',.5,'active',OPEN,'Poussée cheville, genou haut'),st('Retour marche',1.5,'rest',HR(.55,.75))),CD(10)]}}],
+  fractionne:[
+   c=>{const n=Math.max(4,Math.min(8,Math.floor(c/5)));return{t:`${n} × 3 min en côte 8-12 %`,why:`Développement VO2max en montée${vamTxt(.95)}. Récupération en redescente trottinée.`,
+    steps:[WU(15,HR(.6,.75)),...reps(n,st('Côte VO2',3,'active',HR(.90,.95)),st('Redescente',2,'rest',HR(.6,.75))),CD(10)]}},
+   c=>({t:'Pyramide 1-2-3-2-1 min',why:'Fractionné varié sur sentier roulant : récupération égale au temps d\'effort.',
+    steps:[WU(15,HR(.6,.75)),...[1,2,3,2,1].flatMap((m,i,a)=>[st(`Effort ${m} min`,m,'active',HR(.90,.96)),...(i<a.length-1?[st('Récup trot',m,'rest',HR(.6,.75))]:[])]),CD(10)]})]
+ },
+ route:{
+  recup:[c=>({t:'Footing de récupération',why:'Très facile, à la sensation, terrain plat.',steps:[WU(5,HR(.55,.66)),st('Footing',c,'active',SPD(.58,.65)),CD(5)]})],
+  ef:[
+   c=>({t:'Footing endurance fondamentale',why:'Base aérobie à allure conversationnelle.',steps:[WU(10,SPD(.58,.65)),st('Endurance',c,'active',SPD(.65,.72)),CD(5)]}),
+   c=>({t:'Endurance + 6 accélérations',why:'Base aérobie et rappel de vitesse sans fatigue.',steps:[WU(10,SPD(.58,.65)),st('Endurance',Math.max(10,c-9),'active',SPD(.65,.72)),...reps(6,st('Accélération 20 s',.33,'active',SPD(.95,1.05)),st('Récup trot',1.17,'rest',SPD(.55,.65))),CD(5)]})],
+  seuil:[
+   c=>{const n=Math.max(2,Math.min(4,Math.floor((c+2)/12)));return{t:`${n} × 10 min au seuil`,why:'Seuil anaérobie : 85-88 % de VMA, récupération 2 min.',
+    steps:[WU(15,SPD(.6,.68)),...reps(n,st('Seuil',10,'active',SPD(.85,.88)),st('Récup trot',2,'rest',SPD(.55,.65))),CD(10)]}},
+   c=>({t:'Tempo continu',why:'Tenir 80-84 % de VMA longtemps : endurance de vitesse.',steps:[WU(15,SPD(.6,.68)),st('Tempo',Math.max(15,Math.min(40,c)),'active',SPD(.80,.84)),CD(10)]})],
+  puissance:[
+   c=>{const n=Math.max(8,Math.min(12,Math.floor(c/2.5)));return{t:`2 séries de ${n} × 30/30`,why:'VMA courte : 30 s à 100-105 % de VMA / 30 s trot. 3 min entre les séries.',
+    steps:[WU(15,SPD(.6,.68),'Gammes + 3 accélérations'),...reps(n,st('30 s vite',.5,'active',SPD(1,1.05)),st('30 s trot',.5,'rest',SPD(.5,.6))),st('Récup entre séries',3,'rest',SPD(.5,.6)),...reps(n,st('30 s vite (2)',.5,'active',SPD(1,1.05)),st('30 s trot',.5,'rest',SPD(.5,.6))),CD(10)]}},
+   c=>({t:'10 × 200 m',why:'Vitesse et économie de course : 105-110 % de VMA, récupération 200 m trot.',
+    steps:[WU(15,SPD(.6,.68)),...reps(10,st('200 m',.75,'active',SPD(1.05,1.10)),st('Récup trot',1,'rest',SPD(.5,.6))),CD(10)]})],
+  fractionne:[
+   c=>{const n=Math.max(4,Math.min(8,Math.floor(c/6)));return{t:`${n} × 1000 m`,why:'VMA longue : 92-95 % de VMA, récupération 2 min.',
+    steps:[WU(15,SPD(.6,.68)),...reps(n,st('1000 m',Math.round(1000/((P().vma||15)*.935/3.6)/6)/10,'active',SPD(.92,.95)),st('Récup',2,'rest',SPD(.5,.6))),CD(10)]}},
+   c=>{const n=Math.max(4,Math.min(6,Math.floor(c/6)));return{t:`${n} × 3 min`,why:'Puissance aérobie : 90-93 % de VMA, récupération 2 min.',
+    steps:[WU(15,SPD(.6,.68)),...reps(n,st('3 min',3,'active',SPD(.90,.93)),st('Récup',2,'rest',SPD(.5,.6))),CD(10)]}}]
+ },
+ elliptique:{
+  recup:[c=>({t:'Elliptique récupération',why:'Zéro impact, idéal le lendemain d\'une sortie longue.',steps:[WU(5,HR(.55,.65)),st('Facile',c,'active',HR(.60,.70)),CD(5)]})],
+  ef:[c=>({t:'Elliptique endurance',why:'Endurance fondamentale sans impact.',steps:[WU(8,HR(.6,.7)),st('Endurance Z2',c,'active',HR(.70,.79),'Résistance moyenne, cadence régulière'),CD(5)]})],
+  seuil:[c=>{const n=Math.max(2,Math.min(4,Math.floor(c/11)));return{t:`${n} × 8 min seuil`,why:'Seuil sans impact : résistance élevée, cadence soutenue.',steps:[WU(10,HR(.6,.75)),...reps(n,st('Seuil',8,'active',HR(.84,.89)),st('Récup',3,'rest',HR(.6,.72))),CD(8)]}}],
+  puissance:[c=>{const n=Math.max(8,Math.min(12,Math.floor(c/2)));return{t:`${n} × 30 s résistance max`,why:'Force-endurance du bas du corps : résistance très haute, poussée appuyée.',steps:[WU(10,HR(.6,.75)),...reps(n,st('30 s dur',.5,'active',OPEN,'Résistance max, cadence 60-70'),st('Récup',1.5,'rest',HR(.6,.72))),CD(8)]}}],
+  fractionne:[c=>{const n=Math.max(6,Math.min(10,Math.floor(c/3)));return{t:`${n} × 2 min / 1 min`,why:'Fractionné aérobie sans impact.',steps:[WU(10,HR(.6,.75)),...reps(n,st('2 min fort',2,'active',HR(.90,.95)),st('1 min facile',1,'rest',HR(.6,.75))),CD(8)]}}]
+ },
+ velo:{
+  recup:[c=>({t:'Vélo récupération',why:'Pédalage souple, cadence 90 rpm.',steps:[WU(5,PWR(.4,.5)),st('Souple',c,'active',PWR(.45,.55),'Cadence 90-95 rpm'),CD(5,PWR(.4,.5))]})],
+  ef:[c=>({t:'Vélo endurance',why:'Endurance fondamentale à 56-75 % de FTP.',steps:[WU(10,PWR(.45,.55)),st('Endurance',c,'active',PWR(.60,.72),'Cadence 85-95 rpm'),CD(5,PWR(.4,.5))]})],
+  seuil:[c=>{const n=Math.max(2,Math.min(4,Math.floor(c/12)));return{t:`${n} × 8 min sweet spot / seuil`,why:'88-95 % de FTP, récupération 4 min.',steps:[WU(12,PWR(.5,.65),'Inclure 3 × 1 min à 100 % FTP'),...reps(n,st('Seuil',8,'active',PWR(.88,.95)),st('Récup',4,'rest',PWR(.45,.55))),CD(8,PWR(.4,.5))]}}],
+  puissance:[c=>{const n=Math.max(6,Math.min(10,Math.floor(c/3)));return{t:`${n} × 1 min PMA`,why:'Puissance maximale aérobie : 120-130 % de FTP, récupération 2 min.',steps:[WU(15,PWR(.5,.65)),...reps(n,st('1 min PMA',1,'active',PWR(1.2,1.3)),st('Récup',2,'rest',PWR(.4,.5))),CD(10,PWR(.4,.5))]}}],
+  fractionne:[c=>{const n=Math.max(4,Math.min(6,Math.floor(c/7)));return{t:`${n} × 4 min VO2`,why:'105-115 % de FTP, récupération 3 min.',steps:[WU(15,PWR(.5,.65)),...reps(n,st('4 min VO2',4,'active',PWR(1.05,1.15)),st('Récup',3,'rest',PWR(.4,.5))),CD(10,PWR(.4,.5))]}}]
+ },
+ renfo:{
+  recup:[c=>({t:'Mobilité et proprioception',why:'Récupération active : chevilles, hanches, colonne. Aucune charge.',steps:[st('Mobilité chevilles/hanches',8,'warmup'),
+    ...reps(3,st('Équilibre unipodal 30 s/jambe',1,'active',OPEN,'Yeux ouverts puis fermés'),st('Pause',.5,'rest')),st('Étirements doux chaîne postérieure',Math.max(5,c-12),'active'),st('Respiration / relâchement',3,'cooldown')]})],
+  ef:[c=>({t:'Renfo course à pied — circuit léger',why:'Fondamentaux : mollets, pieds, fessiers, gainage. Poids du corps.',steps:circuit(c,[
+    ['Montées sur pointes',2,15,'Lent en descente'],['Pont fessier',2,12,''],['Équilibre unipodal',3,'30 s/jambe',''],['Gainage frontal',3,'30 s',''],['Gainage latéral',2,'30 s/côté',''],['Fentes avant',2,'10/jambe','']])})],
+  seuil:[c=>({t:'Endurance de force — circuit',why:'Circuit enchaîné 40 s / 20 s : tenue musculaire pour les longues montées.',steps:circuit(c,[
+    ['Squats',3,'40 s',''],['Step-ups sur banc',3,'40 s',''],['Pont fessier unipodal',3,'40 s',''],['Montées sur pointes unipodales',3,'40 s',''],['Gainage dynamique',3,'40 s','']],true)})],
+  puissance:[c=>({t:'Force + excentrique descente',why:'Force maximale et freinage pour la descente : charges lourdes ou lestage, peu de répétitions.',steps:circuit(c,[
+    ['Squat lesté',4,6,'Charge lourde, 2 min de récup'],['Fentes bulgares',3,'8/jambe',''],['Nordic hamstring (excentrique)',3,5,'Descente en 4 s'],['Descente excentrique sur marche',3,'10/jambe','Descente 3 s'],['Sauts sur caisse',3,5,'Réception silencieuse']])})],
+  fractionne:[c=>({t:'Circuit HIIT pliométrie',why:'Réactivité et cardio : 30 s / 30 s, 3 tours.',steps:circuit(c,[
+    ['Sauts squat',3,'30 s',''],['Sauts latéraux',3,'30 s',''],['Montées de genoux',3,'30 s',''],['Burpees',3,'30 s',''],['Gainage',3,'30 s','']],true)})]
+ }
+};
+LIB.tapis={recup:LIB.route.recup,ef:LIB.route.ef,
+  seuil:[...LIB.route.seuil,c=>{const n=Math.max(3,Math.min(5,Math.floor(c/10)));return{t:`${n} × 6 min seuil en pente 6 %`,why:'Seuil spécifique montée : inclinaison 6 %, vitesse réduite de 20 %.',
+    steps:[WU(12,SPD(.58,.65),'Pente 1 %'),...reps(n,st('Seuil pente 6 %',6,'active',HR(.84,.89),'Inclinaison 6 %'),st('Récup pente 1 %',2,'rest',SPD(.5,.6))),CD(8)]}}],
+  puissance:LIB.route.puissance,
+  fractionne:[...LIB.route.fractionne,c=>{const n=Math.max(5,Math.min(8,Math.floor(c/5)));return{t:`${n} × 3 min en pente 10 %`,why:'Fractionné spécifique côte, sans impact de descente.',
+    steps:[WU(12,SPD(.58,.65),'Pente 1 %'),...reps(n,st('Côte 10 %',3,'active',HR(.90,.95),'Inclinaison 10 %'),st('Récup à plat',2,'rest',SPD(.5,.6))),CD(8)]}}]};
+// circuit de renfo : chaque exercice devient une étape (temps estimé), récupérations incluses
+function circuit(c,ex,timed){
+  const o=[st('Échauffement articulaire',6,'warmup',OPEN,'Mobilité + 2 min de corde ou montées de genoux')];
+  for(const [name,sets,repsTxt,note] of ex){
+    const work=timed?(parseInt(repsTxt)||40)/60:(typeof repsTxt==='number'?repsTxt*3/60:0.75);
+    const consigne=[`${repsTxt}${typeof repsTxt==='number'?' rép.':''}`,note].filter(Boolean).join(' · ');
+    for(let i=1;i<=sets;i++){o.push(st(`${name} ${i}/${sets}`,Math.max(.5,Math.round(work*2)/2),'active',OPEN,consigne));if(i<sets)o.push(st('Récupération',timed?.33:1,'rest'))}
+    o.push(st('Changement d\'exercice',timed?.5:1,'rest'));
+  }
+  o.push(st('Étirements',5,'cooldown'));return o;
+}
+
+/* --- Génération --- */
+const KIND_HR={warmup:.65,cooldown:.6,rest:.68};
+function stepHrFrac(s){const t=s.target||OPEN;
+  if(t.type==='hr')return(t.lo+t.hi)/2/P().fcMax;
+  if(t.type==='speed'){const f=(t.lo+t.hi)/2*3.6/(P().vma||15);return Math.min(.98,.25+.72*f)}
+  if(t.type==='power'){const f=(t.lo+t.hi)/2/(P().ftp||200);return Math.min(.98,.42+.48*f)}
+  return KIND_HR[s.kind]||.75}
+function sessionLoad(steps){let v=0;for(const s of steps){const fc=stepHrFrac(s)*P().fcMax;const h=hrrOf(fc);v+=s.min*h*trimpK(h)}return Math.round(v)}
+function buildSession(tpl,type,int,dur,factor){
+  const fixed=s=>s.reduce((a,x)=>a+(x.kind==='warmup'||x.kind==='cooldown'?x.min:0),0);
+  const DEF={recup:25,ef:45,seuil:40,puissance:24,fractionne:30};
+  let probe=tpl(DEF[int]||30);
+  let body=dur?Math.max(10,dur-fixed(probe.steps)):(DEF[int]||30);
+  body=Math.round(body*factor);
+  const s=tpl(body);s.total=Math.round(s.steps.reduce((a,x)=>a+x.min,0));s.load=sessionLoad(s.steps);s.type=type;s.int=int;return s;
+}
+const TYPE_LBL={trail:'Trail',route:'Route',tapis:'Tapis',elliptique:'Elliptique',velo:'Vélo',renfo:'Renfo'};
+const INT_LBL={recup:'Récupération',ef:'Endurance fondamentale',seuil:'Seuil',puissance:'Puissance',fractionne:'Fractionné'};
+let GEN=[];
+function renderReadiness(){
+  const rd=readiness();
+  $('#rdCard').innerHTML=`<div class="row" style="justify-content:space-between;align-items:flex-start">
+    <div><h2 style="margin:0 0 4px">État de forme du jour</h2><span class="muted" style="font-size:13px">Calculé sur ta charge (Strava), ta VFC, ton sommeil et ta FC de repos (Runalyze / saisie).</span></div>
+    <div class="kpi ${rd.lvl.c}" style="min-width:130px;text-align:center"><b>${rd.score}/100</b><span>${rd.lvl.t}</span></div></div>
+    <div style="margin-top:10px;font-size:14px">${rd.F.map(f=>`<div class="row" style="gap:6px;margin:3px 0"><span class="tag ${f.v?'warn':''}">${f.v?'−'+f.v:'OK'}</span><b style="font-weight:600">${f.label}</b><span class="muted">${esc(f.detail)}</span></div>`).join('')||'<span class="muted">Pas encore assez de données.</span>'}</div>`;
+  return rd;
+}
+function generate(){
+  const rd=readiness(),type=$('#gType').value,int=$('#gInt').value,dur=n($('#gDur').value);
+  const v=verdict(rd,int);const out=[];
+  const factor=v.k==='allege'?(INT_RANK[int]>=2?.75:.8):1;
+  const tpls=LIB[type]?.[int]||[];
+  if(v.k==='non'){
+    // séance demandée déconseillée : on propose d'abord l'alternative adaptée
+    for(const alt of ['ef','recup']){if(INT_RANK[alt]<=1&&verdict(rd,alt).k!=='non'){const a=LIB[type][alt]||[];a.slice(0,2).forEach(t=>out.push({...buildSession(t,type,alt,dur,alt==='ef'?.8:1),reco:true}));break}}
+  }
+  tpls.forEach(t=>out.push({...buildSession(t,type,int,dur,factor),flag:v}));
+  GEN=out;
+  $('#gOut').innerHTML=(v.k==='non'?`<div class="alert red"><div><b>${INT_LBL[int]} déconseillé aujourd'hui</b><span class="muted">${esc(v.why)} Les séances adaptées sont proposées en premier ; la séance demandée reste disponible plus bas.</span></div></div>`:
+    v.k==='allege'?`<div class="alert orange"><div><b>Séances allégées</b><span class="muted">${esc(v.why)}</span></div></div>`:'')+
+    out.map((s,i)=>`<div class="card" style="${s.reco?'border-color:var(--accent)':s.flag?.k==='non'?'opacity:.75':''}">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div><span class="tag ${s.reco?'':s.flag?.k==='non'?'warn':''}">${s.reco?'Recommandée':s.flag?.k==='non'?'Déconseillée aujourd\'hui':TYPE_LBL[s.type]+' · '+INT_LBL[s.int]}</span>
+          <h2 style="margin:6px 0 2px">${esc(s.t)}</h2><span class="muted" style="font-size:13px">${esc(s.why)}</span></div>
+        <div style="text-align:right;white-space:nowrap"><b style="font-size:20px">${s.total} min</b><div class="muted" style="font-size:12px">charge ≈ ${s.load} TRIMP</div></div></div>
+      <div class="scroll" style="margin-top:10px"><table><tr><th>Étape</th><th class="num">Durée</th><th>Cible</th></tr>
+      ${compact(s.steps).map(x=>`<tr><td style="white-space:normal">${esc(x.name)}${x.note?`<div class="muted" style="font-size:12px">${esc(x.note)}</div>`:''}</td><td class="num">${x.dur}</td><td style="white-space:normal">${targetTxt(x.target)}</td></tr>`).join('')}</table></div>
+      <div class="row" style="margin-top:10px"><button class="btn small" data-fit="${i}">Fichier montre (.fit)</button></div></div>`).join('');
+}
+// fin d'un bloc de répétitions « base i/n » : on n'absorbe une récup que si elle précède une autre répétition du même bloc
+function blockEnd(steps,i,base,n){
+  const esc=base.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),re=new RegExp('^'+esc+' \\d+/'+n+'$');let j=i+1;
+  while(j<steps.length){if(re.test(steps[j].name))j++;else if(steps[j].kind==='rest'&&j+1<steps.length&&re.test(steps[j+1].name))j++;else break}
+  return j;
+}
+// affichage compact des répétitions (le FIT garde toutes les étapes)
+function compact(steps){
+  const out=[];for(let i=0;i<steps.length;i++){const s=steps[i],m=s.name.match(/^(.*) (\d+)\/(\d+)$/);
+    if(m&&m[2]==='1'){const n=+m[3],rest=steps[i+1]?.kind==='rest'?steps[i+1]:null;
+      out.push({name:`${m[1]} × ${n}`,dur:fmtMin(s.min)+(rest?` / ${fmtMin(rest.min)} récup`:''),target:s.target,note:[s.note,rest&&rest.target?.type!=='open'?'récup '+targetTxt(rest.target):''].filter(Boolean).join(' · ')});
+      i=blockEnd(steps,i,m[1],n)-1;continue}
+    out.push({name:s.name,dur:fmtMin(s.min),target:s.target,note:s.note})}
+  return out;
+}
+const fmtMin=m=>m<1?Math.round(m*60)+' s':Number.isInteger(m)?m+' min':Math.floor(m)+' min '+Math.round((m%1)*60)+' s';
+$('#btnGen').onclick=generate;
+$('#gOut').onclick=e=>{const b=e.target.closest('[data-fit]');if(!b)return;const s=GEN[+b.dataset.fit];downloadFit(s)};
+
+/* --- Encodeur FIT (workout) --- */
+const CRC_T=[0x0000,0xCC01,0xD801,0x1400,0xF001,0x3C00,0x2800,0xE401,0xA001,0x6C00,0x7800,0xB401,0x5000,0x9C01,0x8801,0x4400];
+function fitCrc(bytes,crc=0){for(const b of bytes){let t=CRC_T[crc&0xF];crc=(crc>>4)&0x0FFF;crc=crc^t^CRC_T[b&0xF];t=CRC_T[crc&0xF];crc=(crc>>4)&0x0FFF;crc=crc^t^CRC_T[(b>>4)&0xF]}return crc}
+function fitWorkout(name,sport,subSport,steps){
+  const out=[];const u8=v=>out.push(v&0xFF),u16=v=>{u8(v);u8(v>>8)},u32=v=>{u16(v&0xFFFF);u16(v>>>16)};
+  const str=(s,len)=>{const b=new TextEncoder().encode(s);const n=Math.min(b.length,len-1);for(let i=0;i<len;i++)u8(i<n?b[i]:0)};
+  const def=(local,gnum,fields)=>{u8(0x40|local);u8(0);u8(0);u16(gnum);u8(fields.length);for(const [num,size,base] of fields){u8(num);u8(size);u8(base)}};
+  // file_id
+  def(0,0,[[0,1,0x00],[1,2,0x84],[2,2,0x84],[3,4,0x8C],[4,4,0x86]]);
+  u8(0);u8(5);u16(255);u16(0);u32(Math.floor(Math.random()*1e9)+1);u32(Math.floor(Date.now()/1000)-631065600);
+  // workout
+  def(1,26,[[4,1,0x00],[11,1,0x00],[6,2,0x84],[8,32,0x07]]);
+  u8(1);u8(sport);u8(subSport);u16(steps.length);str(name,32);
+  // workout_step
+  def(2,27,[[254,2,0x84],[0,32,0x07],[1,1,0x00],[2,4,0x86],[3,1,0x00],[4,4,0x86],[5,4,0x86],[6,4,0x86],[7,1,0x00],[8,64,0x07]]);
+  const INT={active:0,rest:1,warmup:2,cooldown:3};
+  steps.forEach((s,i)=>{
+    if(s.repeatFrom!=null){   // étape « répéter » : duration_type 6, retour à l'étape repeatFrom, count fois
+      u8(2);u16(i);str('',32);u8(6);u32(s.repeatFrom);u8(2);u32(s.count);u32(0);u32(0);u8(0);str('',64);return}
+    const t=s.target||OPEN;let tt=2,lo=0,hi=0;
+    if(t.type==='hr'){tt=1;lo=t.lo+100;hi=t.hi+100}
+    else if(t.type==='speed'){tt=0;lo=Math.round(t.lo*1000);hi=Math.round(t.hi*1000)}
+    else if(t.type==='power'){tt=4;lo=t.lo+1000;hi=t.hi+1000}
+    u8(2);u16(i);str(s.name,32);u8(0);u32(Math.round(s.min*60*1000));u8(tt);u32(0);u32(lo);u32(hi);u8(INT[s.kind]??0);str(s.note||'',64)});
+  const data=new Uint8Array(out);
+  const h=[14,0x20];const hb=[];const p=v=>hb.push(v&0xFF);p(14);p(0x20);p(2132&0xFF);p(2132>>8);
+  [0,8,16,24].forEach(k=>p(data.length>>>k));'.FIT'.split('').forEach(c=>p(c.charCodeAt(0)));
+  const hc=fitCrc(hb);hb.push(hc&0xFF,hc>>8);
+  const all=new Uint8Array(hb.length+data.length+2);all.set(hb,0);all.set(data,hb.length);
+  const c=fitCrc(all.subarray(0,hb.length+data.length));all[all.length-2]=c&0xFF;all[all.length-1]=c>>8;
+  return all;
+}
+const FIT_SPORT={trail:[1,3],route:[1,0],tapis:[1,1],elliptique:[4,15],velo:[2,6],renfo:[10,20]};   // [sport, sous-sport]
+const asciiName=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[×]/g,'x').replace(/[—–]/g,'-').replace(/[^\x20-\x7E]/g,'');
+// regroupe « X 1/n, récup, X 2/n, récup… » en « X, récup, répéter n fois »
+function fitSteps(steps){
+  const out=[];
+  for(let i=0;i<steps.length;i++){const s=steps[i],m=s.name.match(/^(.*) 1\/(\d+)$/);
+    if(m&&+m[2]>1){const n=+m[2],base=m[1],rest=steps[i+1]?.kind==='rest'?steps[i+1]:null;
+      const from=out.length;out.push({...s,name:base});if(rest)out.push(rest);out.push({repeatFrom:from,count:n});
+      i=blockEnd(steps,i,base,n)-1;continue}
+    out.push(s)}
+  return out;
+}
+function downloadFit(s){
+  const [sp,sub]=FIT_SPORT[s.type]||[1,0];
+  const steps=fitSteps(s.steps).map(x=>x.repeatFrom!=null?x:({...x,name:asciiName(x.name).slice(0,31),note:asciiName(x.note||'').slice(0,63)}));
+  const name=asciiName(`${TYPE_LBL[s.type]} ${s.t}`).slice(0,31);
+  const bytes=fitWorkout(name,sp,sub,steps);
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bytes],{type:'application/octet-stream'}));
+  a.download=asciiName(s.t).replace(/[^\w-]+/g,'_').slice(0,40)+'.fit';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
 const _render=render;
-render=function(){_render();renderBio();renderAnalyse();simPrefill();
+render=function(){_render();renderBio();renderAnalyse();simPrefill();renderReadiness();
   const p=DB.profile;$('#profDate').textContent=p.recalAt?`Dernier recalage : ${new Date(p.recalAt).toLocaleDateString('fr-FR')}. Le recalage se fait dans l'onglet Analyse.`:'Valeurs jamais recalées sur tes données : passe par l\'onglet Analyse.'};
 
 render();
