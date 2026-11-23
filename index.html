@@ -102,13 +102,14 @@ svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
 <!-- SEANCES -->
 <section id="seances">
   <div class="card" id="rdCard"></div>
+  <div id="gSuggest" style="margin-bottom:16px"></div>
   <div class="card">
     <h2>Que veux-tu faire ?</h2>
     <div class="grid">
       <label>Type de séance<select id="gType">
         <option value="trail">Trail (extérieur)</option><option value="route">Course sur route / piste</option>
         <option value="tapis">Salle — tapis de course</option><option value="elliptique">Salle — elliptique</option>
-        <option value="velo">Salle — vélo</option><option value="renfo">Renforcement</option></select></label>
+        <option value="velo">Salle — vélo</option><option value="circuit">Salle — circuit (cardio + renfo)</option><option value="renfo">Renforcement</option></select></label>
       <label>Intensité<select id="gInt">
         <option value="recup">Récupération</option><option value="ef" selected>Endurance fondamentale</option>
         <option value="seuil">Seuil</option><option value="puissance">Puissance</option><option value="fractionne">Fractionné</option></select></label>
@@ -1393,6 +1394,186 @@ function circuit(c,ex,timed){
   o.push(st('Étirements',5,'cooldown'));return o;
 }
 
+/* =====================================================================
+   BIBLIOTHÈQUE D'EXERCICES (renfo trail et circuits en salle)
+   Principes : poids du corps → charge, bipodal → unipodal, insistance sur l'excentrique (descente),
+   mollets/soléaire et chevilles pour le terrain, tronc anti-rotation, pliométrie dosée.
+   eq : pdc (poids du corps + mobilier), elastique, haltere, salle
+   ===================================================================== */
+const EX=[
+ // chaîne postérieure
+ {n:'Hip thrust unipodal',c:['post'],eq:'pdc',cue:'Haut du dos sur un canapé ou un banc, une jambe tendue : monte le bassin en serrant le fessier, 2 s de pause en haut.',e:'12/jambe',f:'8/jambe, haltère sur la hanche'},
+ {n:'Soulevé de terre roumain unipodal',c:['post'],eq:'haltere',cue:'Bassin qui recule, dos plat, jambe libre dans l\'alignement du buste, genou d\'appui légèrement fléchi. Descends en 3 s.',e:'10/jambe',f:'6/jambe, haltère lourd'},
+ {n:'Pont ischios talons sur chaise',c:['post'],eq:'pdc',cue:'Allongé, talons sur une chaise, genoux peu fléchis : monte le bassin. Ce sont surtout les ischios qui travaillent.',e:'15',f:'8/jambe en unipodal'},
+ {n:'Nordic hamstring',c:['post','excentrique'],eq:'pdc',cue:'À genoux, chevilles bloquées sous un canapé : laisse tomber le buste le plus lentement possible (4-5 s), mains prêtes à amortir, remonte en poussant.',e:'5',f:'5, descente 5 s'},
+ {n:'Leg curl glissé',c:['post'],eq:'pdc',cue:'Sur le dos, talons sur une serviette (parquet) ou en chaussettes, bassin levé : ramène puis repousse lentement les pieds.',e:'12',f:'8 en unipodal'},
+ {n:'Kettlebell swing',c:['post','cardio'],eq:'salle',cue:'Charnière de hanche explosive, bras relâchés : c\'est la poussée des fessiers qui monte la kettlebell à hauteur de poitrine.',e:'15',f:'10 lourd'},
+ {n:'Good morning à l\'élastique',c:['post'],eq:'elastique',cue:'Élastique sous les pieds et derrière la nuque, bascule le buste dos plat jusqu\'à l\'horizontale puis redresse en poussant les hanches.',e:'15',f:'10, élastique fort'},
+ // quadriceps, force, descente
+ {n:'Fente bulgare',c:['jambes','excentrique'],eq:'pdc',cue:'Pied arrière sur un banc. Descends en 3 s, 1 s d\'arrêt en bas, remonte dynamique. Pied avant loin = fessiers/ischios, proche = quadriceps.',e:'10/jambe',f:'6/jambe, haltères'},
+ {n:'Step-up genou haut',c:['jambes'],eq:'pdc',cue:'Sur une marche haute ou un banc : pousse uniquement avec la jambe d\'appui (pas d\'impulsion du pied au sol), monte le genou opposé.',e:'12/jambe',f:'8/jambe, haltères'},
+ {n:'Squat goblet',c:['jambes'],eq:'haltere',cue:'Haltère ou kettlebell contre la poitrine, descends cuisses à l\'horizontale, dos droit, genoux dans l\'axe des pieds.',e:'15',f:'8, charge lourde'},
+ {n:'Squat unipodal sur banc',c:['jambes','excentrique'],eq:'pdc',cue:'Sur une jambe, assieds-toi lentement (3 s) sur un banc bas, relève-toi sans élan. Tenir un appui au début si besoin.',e:'8/jambe',f:'5/jambe, lesté'},
+ {n:'Skater squat',c:['jambes','excentrique'],eq:'pdc',cue:'Sur une jambe, l\'autre derrière : le genou arrière vient effleurer un coussin, buste penché en avant.',e:'8/jambe',f:'6/jambe, haltère'},
+ {n:'Chaise contre le mur',c:['jambes'],eq:'pdc',cue:'Dos au mur, cuisses à l\'horizontale, respiration calme. Variante : une jambe tendue.',e:'45 s',f:'30 s unipodal'},
+ {n:'Fente arrière',c:['jambes'],eq:'pdc',cue:'Grand pas en arrière, genou arrière vers le sol sans le poser, buste droit, pousse sur le talon avant.',e:'12/jambe',f:'8/jambe, haltères'},
+ {n:'Presse à cuisses unipodale',c:['jambes'],eq:'salle',cue:'Une jambe sur le plateau, descente contrôlée en 3 s jusqu\'à 90°, poussée sur tout le pied.',e:'12/jambe',f:'6/jambe lourd'},
+ {n:'Step-down excentrique',c:['excentrique','jambes'],eq:'pdc',cue:'Debout sur une marche, descends le talon de l\'autre pied vers le sol en 3-4 s, genou d\'appui dans l\'axe du 2e orteil. C\'est le geste de la descente.',e:'12/jambe',f:'8/jambe, haltère'},
+ {n:'Squat tempo 4-1-1',c:['excentrique','jambes'],eq:'haltere',cue:'Descente 4 s, 1 s d\'arrêt en bas, remontée 1 s. Charge modérée, qualité du contrôle avant tout.',e:'10',f:'6, charge lourde'},
+ // mollets, pieds
+ {n:'Mollets unipodal sur marche',c:['mollet'],eq:'pdc',cue:'Avant-pied sur une marche, talon dans le vide, jambe tendue : monte haut en 1 s, redescends en 3 s sous le niveau de la marche.',e:'15/jambe',f:'8/jambe, haltère'},
+ {n:'Mollets genou fléchi (soléaire)',c:['mollet'],eq:'haltere',cue:'Assis, haltère sur les genoux, ou debout genou fléchi à 45° : c\'est le soléaire, le moteur des longues montées.',e:'20',f:'12, charge lourde'},
+ {n:'Relevés de pointes (tibial)',c:['mollet','pied'],eq:'pdc',cue:'Dos au mur, talons à 30 cm du mur : relève les pointes de pied le plus haut possible. Protège les tibias en descente.',e:'20',f:'15 unipodal'},
+ {n:'Pied court',c:['pied','cheville'],eq:'pdc',cue:'Pied à plat : raccourcis le pied en rapprochant l\'avant-pied du talon sans crisper les orteils (la voûte se creuse). Tiens 5 s.',e:'10 × 5 s',f:'10 × 5 s debout sur une jambe'},
+ {n:'Marche pointes puis talons',c:['pied','mollet'],eq:'pdc',cue:'20 m sur la pointe des pieds, 20 m sur les talons, sans poser le reste du pied.',e:'2 aller-retour',f:'2 aller-retour avec haltères'},
+ {n:'Pogo jumps',c:['plyo','mollet'],eq:'pdc',cue:'Petits sauts rapides sur l\'avant-pied, genoux presque tendus, contact au sol le plus court possible. Raideur de cheville.',e:'30 s',f:'20 sauts unipodal/jambe'},
+ // chevilles, proprioception
+ {n:'Équilibre unipodal yeux fermés',c:['cheville'],eq:'pdc',cue:'Sur une jambe, genou souple, ferme les yeux. Si trop facile : sur un coussin.',e:'30 s/jambe',f:'30 s/jambe sur coussin'},
+ {n:'Y-balance',c:['cheville','hanche'],eq:'pdc',cue:'Sur une jambe, va toucher le plus loin possible avec l\'autre pied : devant, diagonale arrière intérieure, diagonale arrière extérieure. Sans te poser.',e:'5 tours/jambe',f:'5 tours/jambe, yeux fermés'},
+ {n:'Éversion à l\'élastique',c:['cheville'],eq:'elastique',cue:'Élastique autour de l\'avant-pied, tourne le pied vers l\'extérieur contre la résistance, retour lent. Prévient l\'entorse externe.',e:'15/pied',f:'12/pied, élastique fort'},
+ {n:'Hop and stick',c:['cheville','plyo'],eq:'pdc',cue:'Saut sur une jambe vers l\'avant puis sur le côté, réception stabilisée 2 s, genou dans l\'axe.',e:'6/jambe',f:'8/jambe, sauts plus longs'},
+ {n:'Équilibre sur coussin + lancers',c:['cheville'],eq:'pdc',cue:'Sur une jambe sur un coussin, lance et rattrape une balle contre un mur.',e:'30 s/jambe',f:'45 s/jambe'},
+ // hanches, moyen fessier, adducteurs
+ {n:'Marche latérale à l\'élastique',c:['hanche'],eq:'elastique',cue:'Élastique au-dessus des chevilles, demi-squat, pas latéraux sans jamais rapprocher les pieds. Stabilise le genou en descente.',e:'12 pas/côté',f:'15 pas/côté, élastique fort'},
+ {n:'Clamshell élastique',c:['hanche'],eq:'elastique',cue:'Couché sur le côté, genoux fléchis, élastique au-dessus des genoux : ouvre le genou du dessus sans basculer le bassin.',e:'15/côté',f:'12/côté, pause 2 s'},
+ {n:'Gainage Copenhague',c:['hanche','tronc'],eq:'pdc',cue:'Gainage latéral, jambe du dessus posée sur un banc, jambe du dessous en l\'air. Adducteurs : prévention des pubalgies.',e:'20 s/côté',f:'30 s/côté'},
+ {n:'Hip airplane',c:['hanche','cheville'],eq:'pdc',cue:'Sur une jambe, buste penché à l\'horizontale : ouvre puis referme le bassin lentement, sans perdre l\'équilibre.',e:'5/jambe',f:'8/jambe'},
+ {n:'Abduction couchée',c:['hanche'],eq:'pdc',cue:'Couché sur le côté, jambe du dessus tendue légèrement en arrière, monte-la sans tourner le pied.',e:'15/côté',f:'12/côté, lestée'},
+ // tronc
+ {n:'Gainage frontal',c:['tronc'],eq:'pdc',cue:'Appui avant-bras, corps aligné, fessiers et abdos serrés, respire normalement.',e:'45 s',f:'30 s, une jambe levée'},
+ {n:'Gainage latéral',c:['tronc'],eq:'pdc',cue:'Sur l\'avant-bras, bassin haut, corps aligné. Variante : lève la jambe du dessus.',e:'30 s/côté',f:'30 s/côté, jambe levée'},
+ {n:'Dead bug',c:['tronc'],eq:'pdc',cue:'Sur le dos, bras et jambes en l\'air, bas du dos plaqué au sol : tends lentement bras et jambe opposés.',e:'10/côté',f:'8/côté, haltère'},
+ {n:'Bird dog',c:['tronc'],eq:'pdc',cue:'À quatre pattes, tends bras et jambe opposés, dos immobile, tiens 2 s.',e:'10/côté',f:'10/côté, pause 5 s'},
+ {n:'Pallof press',c:['tronc'],eq:'elastique',cue:'Élastique fixé sur le côté, mains contre la poitrine : tends les bras devant toi en résistant à la rotation.',e:'10/côté',f:'8/côté, pause 3 s bras tendus'},
+ {n:'Planche toucher d\'épaule',c:['tronc'],eq:'pdc',cue:'En planche bras tendus, touche l\'épaule opposée sans que le bassin bouge.',e:'20',f:'30'},
+ {n:'Farmer carry unilatéral',c:['tronc','cardio'],eq:'salle',cue:'Haltère lourd d\'un seul côté, marche buste droit sans pencher. Anti-inclinaison, utile avec un sac de trail.',e:'40 m/côté',f:'30 m/côté, très lourd'},
+ {n:'Superman',c:['tronc','post'],eq:'pdc',cue:'Sur le ventre, décolle bras et jambes 2 s, regard au sol.',e:'15',f:'12, pause 3 s'},
+ // pliométrie
+ {n:'Sauts sur box',c:['plyo'],eq:'pdc',cue:'Saut à deux pieds sur une marche ou un box, réception silencieuse et stable, redescends en marchant.',e:'6',f:'5, box plus haut'},
+ {n:'Fentes sautées',c:['plyo'],eq:'pdc',cue:'Changement de jambe en l\'air, réception douce genou dans l\'axe.',e:'8/jambe',f:'10/jambe'},
+ {n:'Skater latéral',c:['plyo','cheville'],eq:'pdc',cue:'Saut latéral d\'une jambe sur l\'autre, réception tenue 1 s. Stabilité en dévers.',e:'8/côté',f:'10/côté, réception plus loin'},
+ {n:'Bondissements alternés',c:['plyo'],eq:'pdc',cue:'Foulées bondissantes, genou haut, poussée de cheville, en légère montée si possible.',e:'20 m × 4',f:'30 m × 5'},
+ {n:'Squat sauté',c:['plyo'],eq:'pdc',cue:'Demi-squat puis saut vertical, réception amortie et enchaînée.',e:'10',f:'8, lesté léger'},
+ {n:'Corde à sauter',c:['plyo','cardio','mollet'],eq:'pdc',cue:'Sauts légers sur l\'avant-pied, rythme régulier.',e:'45 s',f:'30 s rapide'},
+ {n:'Drop jump',c:['plyo','excentrique'],eq:'pdc',cue:'Laisse-toi tomber d\'une marche de 30 cm, rebondis immédiatement le plus haut possible. Réservé aux pratiquants réguliers.',e:'5',f:'6'},
+ // mobilité
+ {n:'Mobilité cheville genou au mur',c:['mobilite'],eq:'pdc',cue:'Pied à 10 cm du mur, amène le genou au mur sans décoller le talon.',e:'10/côté',f:'10/côté'},
+ {n:'Étirement psoas en fente',c:['mobilite'],eq:'pdc',cue:'Genou arrière au sol, bascule le bassin vers l\'avant, fessier arrière serré.',e:'40 s/côté',f:'40 s/côté'},
+ {n:'90/90 hanches',c:['mobilite'],eq:'pdc',cue:'Assis, jambes à 90°, bascule les genoux d\'un côté à l\'autre sans les mains.',e:'8 passages',f:'8 passages'},
+ {n:'World\'s greatest stretch',c:['mobilite'],eq:'pdc',cue:'Fente avant, main au sol, coude vers la cheville puis ouverture du bras vers le ciel.',e:'5/côté',f:'5/côté'},
+ {n:'Chat-vache',c:['mobilite'],eq:'pdc',cue:'À quatre pattes, enroule puis creuse le dos lentement avec la respiration.',e:'10',f:'10'},
+ {n:'Pigeon',c:['mobilite'],eq:'pdc',cue:'Jambe avant pliée devant toi, jambe arrière tendue, buste qui descend vers le sol.',e:'40 s/côté',f:'40 s/côté'},
+ {n:'Rouleau de massage mollets et cuisses',c:['mobilite'],eq:'pdc',cue:'Passages lents, 1 min par zone, insiste sans appuyer sur les points douloureux.',e:'1 min/zone',f:'1 min/zone'},
+ // cardio salle
+ {n:'Rameur',c:['cardio','machine'],eq:'salle',cue:'Jambes, puis buste, puis bras ; retour dans l\'ordre inverse. Cadence 22-26.',e:'',f:''},
+ {n:'Vélo (assault ou spinning)',c:['cardio','machine'],eq:'salle',cue:'Cadence 85-95 rpm, résistance adaptée à la zone cible.',e:'',f:''},
+ {n:'SkiErg',c:['cardio','machine'],eq:'salle',cue:'Tirage bras tendus avec flexion de hanches, comme en ski de fond : utile pour les bâtons.',e:'',f:''},
+ {n:'Tapis incliné en marche rapide',c:['cardio','machine'],eq:'salle',cue:'Pente 12-15 %, sans tenir les barres : simulation de montée raide.',e:'',f:''},
+ {n:'Wall ball',c:['cardio','jambes'],eq:'salle',cue:'Squat puis lancer du médecine-ball contre une cible à 3 m, rattrape et enchaîne.',e:'15',f:'10'},
+ {n:'Burpees',c:['cardio','plyo'],eq:'pdc',cue:'Planche, pompe, retour pieds sous les mains, saut. Régulier plutôt que rapide.',e:'10',f:'8'},
+ {n:'Battle rope',c:['cardio','tronc'],eq:'salle',cue:'Ondulations alternées, gainage serré, genoux fléchis.',e:'30 s',f:'20 s'},
+];
+const daySeed=()=>Math.floor(Date.now()/DAY);
+// choisit des exercices variés : un par catégorie demandée, selon le matériel et une rotation quotidienne
+function pickEx(cats,eqOk,seedOff){
+  const used=new Set(),out=[];let k=0;
+  for(const cat of cats){
+    const pool=EX.filter(x=>x.c.includes(cat)&&eqOk.includes(x.eq)&&!used.has(x.n)&&(cat==='machine'||x.e!==''));
+    if(!pool.length)continue;
+    const x=pool[(daySeed()*7+seedOff*5+k*3)%pool.length];used.add(x.n);out.push(x);k++;
+  }
+  return out;
+}
+const EQ_SETS=[{t:'à la maison, poids du corps',eq:['pdc']},{t:'élastique et haltères',eq:['pdc','elastique','haltere']},{t:'en salle',eq:['pdc','elastique','haltere','salle']}];
+const exStep=(x,i,sets,dose,min,kind='active')=>st(`${x.n} ${i}/${sets}`,min,kind,OPEN,`${dose} · ${x.cue}`);
+// séance en séries : chaque exercice en n séries + récup, puis changement d'exercice
+function seriesSession(exs,sets,doseKey,restMin,workMin){
+  const o=[st('Échauffement articulaire',6,'warmup',OPEN,'Mobilité chevilles, hanches, épaules + 2 min de montées de genoux')];
+  for(const x of exs){const dose=x[doseKey]||x.e;const w=/s\b|s\//.test(dose)&&!/rép/.test(dose)?Math.max(.5,(parseInt(dose)||40)/60*(/\/(jambe|côté|pied)/.test(dose)?2:1)):workMin;
+    for(let i=1;i<=sets;i++){o.push(exStep(x,i,sets,dose,Math.round(w*2)/2));if(i<sets)o.push(st('Récupération',restMin,'rest'))}
+    o.push(st('Changement d\'exercice',.5,'rest'))}
+  o.push(st('Étirements',5,'cooldown'));return o;
+}
+// circuit : une étape par station, puis « refaire le circuit × tours »
+function circuitSession(stations,tours,work,rest,warm=6,cool=5,warmNote='Mobilité + 3 min de cardio léger'){
+  const o=[st('Échauffement',warm,'warmup',HR(.6,.72),warmNote)],from=o.length;
+  stations.forEach(([x,dose,target,min])=>{o.push(st(x.n,min??work,'active',target||OPEN,[dose,x.cue].filter(Boolean).join(' · ')));o.push(st('Transition',rest,'rest'))});
+  if(tours>1)o.push({loop:true,from,count:tours,name:'Refaire le circuit',kind:'rest',min:0});
+  o.push(st('Retour au calme',cool,'cooldown',HR(.55,.68),'Marche ou vélo souple puis étirements'));return o;
+}
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+// Renfo : 3 variantes par intensité (maison / élastique-haltères / salle), exercices différents chaque jour
+const RENFO={
+  recup:(c,v)=>{const exs=pickEx(['mobilite','mobilite','cheville','pied','mobilite','mobilite'],EQ_SETS[v].eq,v);
+    return{t:'Mobilité et proprioception',why:'Récupération active sans charge : amplitude des chevilles et des hanches, équilibre.',steps:seriesSession(exs,2,'e',.25,.75)}},
+  ef:(c,v)=>{const exs=pickEx(['post','jambes','mollet','cheville','hanche','tronc'],EQ_SETS[v].eq,v);
+    return{t:`Fondamentaux du traileur — ${EQ_SETS[v].t}`,why:'Un exercice par zone clé : chaîne postérieure, quadriceps, mollets, chevilles, hanches, tronc. 2 à 3 séries, contrôle avant charge.',steps:seriesSession(exs,c>=30?3:2,'e',.75,.75)}},
+  seuil:(c,v)=>{const exs=pickEx(['jambes','post','mollet','hanche','tronc','plyo'],EQ_SETS[v].eq,v);const tours=clamp(Math.round(c/7),2,4);
+    return{t:`Endurance de force en circuit — ${EQ_SETS[v].t}`,why:`${tours} tours de 40 s d'effort / 20 s de transition : tenue musculaire pour les longues montées et la fin de course.`,
+      steps:circuitSession(exs.map(x=>[x,'40 s',OPEN,2/3]),tours,2/3,1/3)}},
+  puissance:(c,v)=>{const exs=pickEx(['jambes','post','excentrique','mollet','plyo'],EQ_SETS[v].eq,v);
+    return{t:`Force et excentrique descente — ${EQ_SETS[v].t}`,why:'Peu de répétitions, charge lourde ou tempo lent en descente (3-5 s) : protège les quadriceps dans les descentes. 2 min de récupération.',steps:seriesSession(exs,c>=30?4:3,'f',1.5,.75)}},
+  fractionne:(c,v)=>{const exs=pickEx(['plyo','plyo','tronc','plyo','jambes'],EQ_SETS[v].eq,v);const tours=clamp(Math.round(c/6),2,4);
+    return{t:`Pliométrie et HIIT — ${EQ_SETS[v].t}`,why:`${tours} tours de 30 s / 30 s : réactivité du pied et cardio. Réceptions silencieuses, arrêt si la technique se dégrade.`,
+      steps:circuitSession(exs.map(x=>[x,'30 s',OPEN,.5]),tours,.5,.5,8)}}
+};
+LIB.renfo={};for(const k of Object.keys(RENFO))LIB.renfo[k]=[0,1,2].map(v=>c=>RENFO[k](c,v));
+LIB.renfo.recup=LIB.renfo.recup.slice(0,2);
+
+// Salle — circuits cardio-renfo
+const CARD=n=>EX.find(x=>x.n===n);
+const SALLE_EQ=['pdc','elastique','haltere','salle'];
+LIB.circuit={
+  recup:[c=>({t:'Vélo souple + mobilité',why:'Récupération active en salle : pédalage léger puis mobilité.',steps:[
+    st('Vélo souple',Math.max(10,Math.round(c*.5)),'active',HR(.58,.68),'Cadence 90 rpm, résistance faible'),
+    ...seriesSession(pickEx(['mobilite','mobilite','mobilite','cheville'],SALLE_EQ,1),1,'e',.25,1).slice(1)]})],
+  ef:[0,1].map(v=>c=>{const cardio=pickEx(['machine','machine','machine'],['salle'],v);const renf=pickEx(['jambes','post','tronc'],SALLE_EQ,v+3);
+    const stations=[];cardio.forEach((x,i)=>{stations.push([x,'Z2 aisance respiratoire',HR(.70,.79),4]);if(renf[i])stations.push([renf[i],renf[i].e,OPEN,1])});
+    const tours=clamp(Math.round(c/(stations.reduce((a,s)=>a+s[3],0)+2.5)),1,3);
+    return{t:`Circuit aérobie ${cardio.map(x=>x.n.split(' ')[0].toLowerCase()).join(' / ')} — ${tours} tour${tours>1?'s':''}`,why:'Endurance fondamentale variée : 4 min de cardio en Z2 alternées avec 1 min de renfo léger.',steps:circuitSession(stations,tours,4,.5,8,6)}}),
+  seuil:[0,1].map(v=>c=>{const cardio=pickEx(['machine','machine','machine'],['salle'],v+1);const renf=pickEx(['jambes','post','mollet'],SALLE_EQ,v+2);
+    const stations=[];cardio.forEach((x,i)=>{stations.push([x,'Seuil : difficile mais tenable',HR(.84,.89),3]);if(renf[i])stations.push([renf[i],renf[i].e,OPEN,1])});
+    const tours=clamp(Math.round(c/13),2,3);
+    return{t:`Circuit seuil ${cardio.map(x=>x.n.split(' ')[0].toLowerCase()).join(' / ')} — ${tours} tours`,why:'3 min au seuil sur une machine, 1 min de renfo : le cardio reste haut pendant le travail musculaire.',steps:circuitSession(stations,tours,3,.5,12,8)}}),
+  puissance:[0,1].map(v=>c=>{const exs=pickEx(['post','plyo','jambes','tronc','cardio'],SALLE_EQ,v);const tours=clamp(Math.round(c/6),3,5);
+    return{t:`Circuit force-puissance ${v?'B':'A'} — ${tours} tours`,why:'Kettlebell, sauts, charges : 40 s explosives / 40 s de récupération.',steps:circuitSession(exs.map(x=>[x,x.f||'40 s explosif',OPEN,2/3]),tours,2/3,2/3,10,6)}}),
+  fractionne:[0,1].map(v=>c=>{const cardio=pickEx(['machine','machine'],['salle'],v+2);const pl=pickEx(['plyo','cardio'],SALLE_EQ,v+5);
+    const stations=[...cardio.map(x=>[x,'Sprint 30 s',HR(.92,.98),.5]),...pl.map(x=>[x,'30 s à fond',OPEN,.5])];const tours=clamp(Math.round(c/(stations.length+1)),3,6);
+    return{t:`HIIT 30/30 ${cardio.map(x=>x.n.split(' ')[0].toLowerCase()).join(' / ')} — ${tours} tours`,why:'Fractionné court sur machines et au poids du corps : 30 s à fond, 30 s de récupération.',steps:circuitSession(stations,tours,.5,.5,12,8)}})
+};
+
+/* --- Boucles de circuit : développement pour la durée, l'affichage et le FIT --- */
+function expandLoops(steps){
+  const out=[];steps.forEach((s,i)=>{if(s.loop){const block=steps.slice(s.from,i);for(let k=1;k<s.count;k++)out.push(...block)}else out.push(s)});return out;
+}
+
+/* --- Suggestion du jour --- */
+function lastHard(){
+  const fm=P().fcMax||188;
+  return DB.sessions.filter(s=>(s.sport==='trail'||s.sport==='route'||s.sport==='velo')&&((s.detail?.zt&&(s.detail.zt[3]||0)+(s.detail.zt[4]||0)>=600)||(s.fcMoy>=.85*fm&&(s.durationS||0)>=900)))
+    .sort((a,b)=>b.date.localeCompare(a.date))[0]||null;
+}
+function suggestion(rd){
+  const lh=lastHard(),days=lh?(today0()-parseD(lh.date))/DAY:99;
+  const renfoDays=(()=>{const r=DB.sessions.filter(s=>s.sport==='renfo').sort((a,b)=>b.date.localeCompare(a.date))[0];return r?(today0()-parseD(r.date))/DAY:99})();
+  let int,why;
+  if(rd.lvl.k==='plat'){int='recup';why='État de forme très bas : récupération active ou repos.'}
+  else if(rd.lvl.k==='fatigue'){int=rd.score<40?'recup':'ef';why='Fatigue présente : on entretient sans ajouter de stress.'}
+  else if(rd.lvl.k==='correct'){if(days>=3&&(rd.acwr??1)<1.25){int='seuil';why=`${days>=99?'Aucune séance intense récente':'Dernière séance intense il y a '+Math.round(days)+' j'} et charge maîtrisée : place pour un seuil allégé.`}else{int='ef';why='Forme correcte : endurance fondamentale pour consolider.'}}
+  else{if(days>=2){int=lh&&/seuil|tempo/i.test(lh.title||'')?'fractionne':'seuil';why=`Tu es frais et ta dernière séance intense date de ${days>=99?'longtemps':Math.round(days)+' j'} : c'est le jour pour de la qualité.`}else{int='ef';why='Séance intense récente : endurance aujourd\'hui, qualité dans 48 h.'}}
+  const renfo=rd.lvl.k!=='plat'&&renfoDays>=4;
+  return{int,why,renfo,renfoDays};
+}
+function applySuggestion(){
+  const rd=readiness(),sg=suggestion(rd);
+  let type='trail';try{type=localStorage.getItem('captrail_gtype')||'trail'}catch(e){}
+  $('#gType').value=type;$('#gInt').value=sg.int;$('#gDur').value='';
+  $('#gSuggest').innerHTML=`<div class="alert green" style="margin:0"><div><b>Suggestion du jour : ${INT_LBL[sg.int].toLowerCase()}</b><span class="muted">${esc(sg.why)}${sg.renfo?` Pas de renfo depuis ${sg.renfoDays>=99?'longtemps':Math.round(sg.renfoDays)+' jours'} : ajoute 20 min de fondamentaux.`:''}</span>
+    ${sg.renfo?'<div class="row" style="margin-top:8px"><button class="btn small ghost" id="btnSgRenfo">Voir le renfo du jour</button></div>':''}</div></div>`;
+  const b=$('#btnSgRenfo');if(b)b.onclick=()=>{$('#gType').value='renfo';$('#gInt').value=rd.lvl.k==='fatigue'?'recup':'ef';$('#gDur').value='25';generate()};
+  generate();
+}
+
 /* --- Génération --- */
 const KIND_HR={warmup:.65,cooldown:.6,rest:.68};
 function stepHrFrac(s){const t=s.target||OPEN;
@@ -1407,9 +1588,9 @@ function buildSession(tpl,type,int,dur,factor){
   let probe=tpl(DEF[int]||30);
   let body=dur?Math.max(10,dur-fixed(probe.steps)):(DEF[int]||30);
   body=Math.round(body*factor);
-  const s=tpl(body);s.total=Math.round(s.steps.reduce((a,x)=>a+x.min,0));s.load=sessionLoad(s.steps);s.type=type;s.int=int;return s;
+  const s=tpl(body);const ex=expandLoops(s.steps);s.total=Math.round(ex.reduce((a,x)=>a+x.min,0));s.load=sessionLoad(ex);s.type=type;s.int=int;return s;
 }
-const TYPE_LBL={trail:'Trail',route:'Route',tapis:'Tapis',elliptique:'Elliptique',velo:'Vélo',renfo:'Renfo'};
+const TYPE_LBL={trail:'Trail',route:'Route',tapis:'Tapis',elliptique:'Elliptique',velo:'Vélo',circuit:'Circuit salle',renfo:'Renfo'};
 const INT_LBL={recup:'Récupération',ef:'Endurance fondamentale',seuil:'Seuil',puissance:'Puissance',fractionne:'Fractionné'};
 let GEN=[];
 function renderReadiness(){
@@ -1430,6 +1611,11 @@ function generate(){
     for(const alt of ['ef','recup']){if(INT_RANK[alt]<=1&&verdict(rd,alt).k!=='non'){const a=LIB[type][alt]||[];a.slice(0,2).forEach(t=>out.push({...buildSession(t,type,alt,dur,alt==='ef'?.8:1),reco:true}));break}}
   }
   tpls.forEach(t=>out.push({...buildSession(t,type,int,dur,factor),flag:v}));
+  // une séance « Recommandée » par défaut : charge la plus haute si frais, médiane si correct, la plus douce sinon
+  if(!out.some(o=>o.reco)){const ok=out.filter(o=>o.flag?.k!=='non');
+    if(ok.length){const so=[...ok].sort((a,b)=>a.load-b.load);const pick=type==='renfo'?ok[0]:rd.score>=75?so[so.length-1]:rd.score>=50?so[Math.floor((so.length-1)/2)]:so[0];
+      pick.reco=true;out.splice(out.indexOf(pick),1);out.unshift(pick)}}
+  try{localStorage.setItem('captrail_gtype',type)}catch(e){}
   GEN=out;
   $('#gOut').innerHTML=(v.k==='non'?`<div class="alert red"><div><b>${INT_LBL[int]} déconseillé aujourd'hui</b><span class="muted">${esc(v.why)} Les séances adaptées sont proposées en premier ; la séance demandée reste disponible plus bas.</span></div></div>`:
     v.k==='allege'?`<div class="alert orange"><div><b>Séances allégées</b><span class="muted">${esc(v.why)}</span></div></div>`:'')+
@@ -1450,7 +1636,9 @@ function blockEnd(steps,i,base,n){
 }
 // affichage compact des répétitions (le FIT garde toutes les étapes)
 function compact(steps){
-  const out=[];for(let i=0;i<steps.length;i++){const s=steps[i],m=s.name.match(/^(.*) (\d+)\/(\d+)$/);
+  const out=[];for(let i=0;i<steps.length;i++){const s=steps[i];
+    if(s.loop){out.push({name:`↻ Refaire le circuit (${steps.slice(s.from,i).filter(x=>x.kind==='active').length} stations)`,dur:`× ${s.count} tours`,target:OPEN,note:''});continue}
+    const m=s.name.match(/^(.*) (\d+)\/(\d+)$/);
     if(m&&m[2]==='1'){const n=+m[3],rest=steps[i+1]?.kind==='rest'?steps[i+1]:null;
       out.push({name:`${m[1]} × ${n}`,dur:fmtMin(s.min)+(rest?` / ${fmtMin(rest.min)} récup`:''),target:s.target,note:[s.note,rest&&rest.target?.type!=='open'?'récup '+targetTxt(rest.target):''].filter(Boolean).join(' · ')});
       i=blockEnd(steps,i,m[1],n)-1;continue}
@@ -1459,6 +1647,8 @@ function compact(steps){
 }
 const fmtMin=m=>m<1?Math.round(m*60)+' s':Number.isInteger(m)?m+' min':Math.floor(m)+' min '+Math.round((m%1)*60)+' s';
 $('#btnGen').onclick=generate;
+// à l'ouverture de l'onglet : suggestion du jour appliquée automatiquement
+$('#tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b&&b.dataset.t==='seances'&&!GEN.length)applySuggestion()});
 $('#gOut').onclick=e=>{const b=e.target.closest('[data-fit]');if(!b)return;const s=GEN[+b.dataset.fit];downloadFit(s)};
 
 /* --- Encodeur FIT (workout) --- */
@@ -1493,12 +1683,14 @@ function fitWorkout(name,sport,subSport,steps){
   const c=fitCrc(all.subarray(0,hb.length+data.length));all[all.length-2]=c&0xFF;all[all.length-1]=c>>8;
   return all;
 }
-const FIT_SPORT={trail:[1,3],route:[1,0],tapis:[1,1],elliptique:[4,15],velo:[2,6],renfo:[10,20]};   // [sport, sous-sport]
+const FIT_SPORT={trail:[1,3],route:[1,0],tapis:[1,1],elliptique:[4,15],velo:[2,6],circuit:[10,26],renfo:[10,20]};   // [sport, sous-sport]
 const asciiName=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[×]/g,'x').replace(/[—–]/g,'-').replace(/[^\x20-\x7E]/g,'');
 // regroupe « X 1/n, récup, X 2/n, récup… » en « X, récup, répéter n fois »
 function fitSteps(steps){
-  const out=[];
-  for(let i=0;i<steps.length;i++){const s=steps[i],m=s.name.match(/^(.*) 1\/(\d+)$/);
+  const out=[],map={};
+  for(let i=0;i<steps.length;i++){const s=steps[i];map[i]=out.length;
+    if(s.loop){out.push({repeatFrom:map[s.from],count:s.count});continue}
+    const m=s.name.match(/^(.*) 1\/(\d+)$/);
     if(m&&+m[2]>1){const n=+m[2],base=m[1],rest=steps[i+1]?.kind==='rest'?steps[i+1]:null;
       const from=out.length;out.push({...s,name:base});if(rest)out.push(rest);out.push({repeatFrom:from,count:n});
       i=blockEnd(steps,i,base,n)-1;continue}
