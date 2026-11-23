@@ -395,6 +395,8 @@ $('#btnReset').onclick=()=>{if(confirm('Effacer toutes les données de ce naviga
    Jetons stockés à part (clé captrail_strava) : ils ne sortent jamais dans l'export JSON. */
 const ST_KEY='captrail_strava';
 let ST=(()=>{try{return JSON.parse(localStorage.getItem(ST_KEY))||{}}catch(e){return{}}})();
+// Valeurs publiques par défaut (l'ID client et l'URL du relais ne sont pas secrets)
+ST.clientId=ST.clientId||'300028';ST.relay=ST.relay||'https://cap-trail-strava.sylvain-duboscq.workers.dev';
 function stSave(){try{localStorage.setItem(ST_KEY,JSON.stringify(ST))}catch(e){}}
 const redirectUri=()=>location.origin+location.pathname;
 const STRAVA_MAP={TrailRun:'trail',Run:'route',VirtualRun:'route',WeightTraining:'renfo',Workout:'renfo',Crossfit:'renfo',Yoga:'renfo',Pilates:'renfo',
