@@ -55,6 +55,14 @@ dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);co
 dialog::backdrop{background:rgba(0,0,0,.35)}
 .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;margin-bottom:8px;background:var(--bg);border-left:4px solid var(--line)}
+.alert b{display:block}.alert.red{border-left-color:var(--danger)}.alert.orange{border-left-color:var(--z4)}.alert.green{border-left-color:var(--accent)}
+.alert .who{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.kpi.red b{color:var(--danger)}.kpi.orange b{color:var(--warn)}.kpi.green b{color:var(--accent)}
+svg.chart{width:100%;height:auto;display:block}
+svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
+.result{margin-top:14px;padding:14px;border-radius:10px;background:var(--accent-soft)}
+.result .big{font-size:26px;font-weight:650;font-variant-numeric:tabular-nums}
 @media (max-width:600px){main{padding:12px}.top .sub{display:none}}
 </style>
 </head>
@@ -64,6 +72,8 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
   <nav id="tabs">
     <button data-t="journal" class="on">Journal</button>
     <button data-t="semaines">Semaines</button>
+    <button data-t="analyse">Analyse</button>
+    <button data-t="simulation">Simulation</button>
     <button data-t="profil">Profil</button>
     <button data-t="donnees">Import / Export</button>
   </nav>
@@ -87,6 +97,78 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
   </div>
 </section>
 
+<!-- ANALYSE -->
+<section id="analyse">
+  <div class="kpis" id="aKpis"></div>
+  <div class="card" style="margin-top:16px">
+    <h2>Alertes des spécialistes</h2>
+    <div id="aAlerts"></div>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <h2 style="margin:0">Forme, fatigue et fraîcheur</h2>
+      <select id="aRange"><option value="90">3 mois</option><option value="180" selected>6 mois</option><option value="365">12 mois</option></select>
+    </div>
+    <div class="legend" style="margin-bottom:8px">
+      <span><i style="background:var(--accent)"></i>Forme (CTL 42 j)</span><span><i style="background:var(--z4)"></i>Fatigue (ATL 7 j)</span>
+      <span><i style="background:var(--z1)"></i>Fraîcheur (TSB)</span><span><i style="background:var(--line)"></i>Charge du jour (TRIMP)</span>
+    </div>
+    <div id="aChart"></div>
+  </div>
+  <div class="card">
+    <h2>Analyse détaillée des séances (flux Strava)</h2>
+    <p class="muted" style="margin-top:0" id="aDetailInfo"></p>
+    <div class="row"><button class="btn" id="btnDetail">Analyser les séances</button></div>
+    <div class="msg" id="msgDetail"></div>
+  </div>
+  <div class="card">
+    <h2>Recalage du référentiel</h2>
+    <p class="muted" style="margin-top:0">Valeurs déduites de tes séances récentes. Chaque proposition indique sa méthode et son niveau de confiance ; rien n'est modifié sans ton clic.</p>
+    <div class="scroll"><table id="tRecal"></table></div>
+    <div class="msg" id="msgRecal"></div>
+  </div>
+  <div class="card">
+    <h2>Durabilité des efforts longs (&gt; 1 h 30)</h2>
+    <div class="scroll"><table id="tDur"></table></div>
+  </div>
+  <div class="card">
+    <h2>Méthode de calcul</h2>
+    <div class="muted" style="font-size:13px" id="aMethod"></div>
+  </div>
+</section>
+
+<!-- SIMULATION -->
+<section id="simulation">
+  <div class="card">
+    <h2>Projection de charge jusqu'à une course</h2>
+    <div class="grid">
+      <label>Date de la course<input type="date" id="sDate"></label>
+      <label>Type<select id="sType"><option value="objectif">Course objectif (affûtage + récup)</option><option value="prepa">Course de préparation</option></select></label>
+      <label>Charge de départ (TRIMP/sem)<input type="number" id="sStart"></label>
+      <label>Progression hebdo (%)<input type="number" id="sProg" value="8" step="1"></label>
+      <label>Cycle<select id="sCycle"><option value="3">3 sem. + 1 récup</option><option value="2">2 sem. + 1 récup</option></select></label>
+      <label>Baisse semaine de récup (%)<input type="number" id="sRecup" value="35" step="5"></label>
+      <label>Affûtage (semaines)<input type="number" id="sTaper" value="2" min="0" max="3"></label>
+      <label>Plafond de charge (TRIMP/sem)<input type="number" id="sCap" placeholder="sans plafond"></label>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="btnSim">Simuler</button></div>
+    <div id="sOut"></div>
+  </div>
+  <div class="card">
+    <h2>Prédiction de temps de course</h2>
+    <div class="grid">
+      <label>Distance (km)<input type="number" id="pKm" step="0.1" value="30"></label>
+      <label>D+ (m)<input type="number" id="pDp" value="2000"></label>
+      <label>D- (m)<input type="number" id="pDm" value="2000"></label>
+      <label>Technicité<select id="pTech"><option value="1">Roulant</option><option value="1.06" selected>Montagne classique</option><option value="1.14">Technique / rocailleux</option></select></label>
+      <label>Poids le jour J (kg)<input type="number" id="pPoids" step="0.1"></label>
+      <label>Gain de forme visé (%)<input type="number" id="pGain" value="0" step="1"></label>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="btnPred">Estimer</button></div>
+    <div id="pOut"></div>
+  </div>
+</section>
+
 <!-- SEMAINES -->
 <section id="semaines">
   <div class="card">
@@ -105,6 +187,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 <section id="profil">
   <div class="card">
     <h2>Référentiel de profil</h2>
+    <p class="muted" style="margin-top:0" id="profDate"></p>
     <div class="grid" id="profFields"></div>
     <div class="row" id="stProfile" style="margin-top:12px;display:none"></div>
   </div>
@@ -510,6 +593,364 @@ async function stHandleCallback(){
     render();await stSync(true);
   }catch(e){flash('#msgSt','Connexion impossible : '+e.message,true)}
 }
+
+/* =====================================================================
+   MOTEUR D'ANALYSE
+   ===================================================================== */
+const DAY=864e5;
+const dayKey=d=>isoDate(d);
+const addDays=(d,n)=>new Date(d.getTime()+n*DAY);
+const today0=()=>{const d=new Date();d.setHours(12,0,0,0);return d};
+const parseD=s=>new Date(s+'T12:00:00');
+const isRunLike=s=>isRun(s);
+const SPORT_HRR={trail:.62,route:.62,renfo:.45,velo:.5,ski:.55,marche:.4,autre:.4};
+
+/* --- Charge d'une séance : TRIMP de Banister ---
+   TRIMP = durée(min) × HRr × 0,64 × e^(1,92 × HRr), HRr = (FCmoy − FCrepos)/(FCmax − FCrepos).
+   Si les temps par zone sont connus (flux Strava), on somme zone par zone (plus juste que la moyenne).
+   Sans FC : RPE si saisi (HRr ≈ RPE/10), sinon valeur type du sport. */
+function hrrOf(fc){const p=DB.profile;const r=(fc-(p.fcRepos||50))/((p.fcMax||188)-(p.fcRepos||50));return Math.max(0,Math.min(1.05,r))}
+const trimpK=h=>.64*Math.exp(1.92*h);
+function loadOf(s){
+  const min=(s.durationS||0)/60;if(!min)return{v:0,src:'—'};
+  const p=DB.profile,d=s.detail;
+  if(d&&d.zt&&d.zt.some(x=>x>0)){
+    let v=0;d.zt.forEach((sec,i)=>{const z=p.zones[i];if(!z)return;const mid=((z.min+Math.min(z.max,100))/2)/100*p.fcMax;const h=hrrOf(mid);v+=sec/60*h*trimpK(h)});
+    return{v,src:'zones'}}
+  if(s.fcMoy){const h=hrrOf(s.fcMoy);return{v:min*h*trimpK(h),src:'FC moy'}}
+  if(s.rpe){const h=Math.min(1,s.rpe/10);return{v:min*h*trimpK(h),src:'RPE'}}
+  const h=SPORT_HRR[s.sport]??.45;return{v:min*h*trimpK(h)*.8,src:'estimée'}
+}
+
+/* --- Série quotidienne CTL / ATL / TSB (modèle impulsion-réponse de Banister, moyennes exponentielles) --- */
+const KC=1-Math.exp(-1/42),KA=1-Math.exp(-1/7);
+function dailyLoads(){
+  const m={};for(const s of DB.sessions){if(!s.date)continue;m[s.date]=(m[s.date]||0)+loadOf(s).v}return m}
+function pmc(until){
+  const loads=dailyLoads();const keys=Object.keys(loads).sort();
+  const end=until||today0();
+  if(!keys.length)return[];
+  let d=parseD(keys[0]),ctl=0,atl=0;const out=[];
+  while(d<=end){const k=dayKey(d),L=loads[k]||0;
+    const tsb=ctl-atl;ctl+=(L-ctl)*KC;atl+=(L-atl)*KA;
+    out.push({date:k,load:L,ctl,atl,tsb,acwr:ctl>1?atl/ctl:null});d=addDays(d,1)}
+  return out;
+}
+
+/* --- Analyse d'un flux Strava : temps par zone, VAM, dérive, FC max --- */
+function analyzeStreams(st,s){
+  const g=k=>st[k]?.data||null;
+  const t=g('time'),hr=g('heartrate'),alt=g('altitude'),dist=g('distance'),mv=g('moving');
+  if(!t||t.length<10)return null;
+  const n=t.length,p=DB.profile;
+  // temps en mouvement cumulé
+  const mt=new Array(n).fill(0);
+  for(let i=1;i<n;i++){const dt=t[i]-t[i-1];mt[i]=mt[i-1]+((dt>0&&dt<=30&&(!mv||mv[i]))?dt:0)}
+  const out={analyzedAt:new Date().toISOString(),movingS:mt[n-1]};
+  if(hr){
+    const zt=p.zones.map(()=>0);
+    for(let i=1;i<n;i++){const dt=mt[i]-mt[i-1];if(!dt||!hr[i])continue;const z=zoneOf(hr[i]);if(z!=null)zt[z]+=dt}
+    out.zt=zt.map(Math.round);
+    const sorted=hr.filter(x=>x>40&&x<230).sort((a,b)=>a-b);
+    out.hrMax=sorted.length?sorted[Math.floor(sorted.length*.997)]:null;  // 99,7e centile : écarte les pics parasites
+  }
+  if(alt&&dist){
+    // VAM : meilleur dénivelé net par heure sur une fenêtre de temps en mouvement, pente moyenne imposée
+    const best=(W,minGrade,maxGrade)=>{let b=null,j=0;
+      for(let i=0;i<n;i++){while(j<n-1&&mt[j]-mt[i]<W)j++;if(mt[j]-mt[i]<W*.95)break;
+        const dz=alt[j]-alt[i],dx=dist[j]-dist[i];if(dz<=0||dx<=0)continue;const gr=dz/dx;
+        if(gr<minGrade||gr>maxGrade)continue;
+        const hrAvg=hr?avg(hr.slice(i,j+1)):null;
+        const v=dz/((mt[j]-mt[i])/3600);if(!b||v>b.v)b={v:Math.round(v),gr:Math.round(gr*100),hr:hrAvg?Math.round(hrAvg):null}}
+      return b};
+    out.vamCourable=best(600,.06,.18);   // 10 min, pente 6-18 %
+    out.vamRaide=best(600,.18,.6);       // 10 min, pente > 18 %
+    out.vamLong=best(1800,.06,.6);       // 30 min, toute pente montante
+  }
+  if(hr&&dist&&mt[n-1]>=3600){
+    // Dérive cardiaque (découplage) : efficacité = vitesse équivalente plat / FC, 1re moitié vs 2e moitié
+    const half=mt[n-1]/2;let a={d:0,z:0,t:0,h:0,c:0},b={d:0,z:0,t:0,h:0,c:0};
+    for(let i=1;i<n;i++){const dt=mt[i]-mt[i-1];if(!dt)continue;const o=mt[i]<=half?a:b;
+      o.d+=Math.max(0,dist[i]-dist[i-1]);if(alt){o.z+=Math.max(0,alt[i]-alt[i-1])}o.t+=dt;if(hr[i]){o.h+=hr[i];o.c++}}
+    const ef=o=>o.c&&o.t?((o.d+10*o.z)/o.t)/(o.h/o.c):null;   // 1 m de D+ ≈ 10 m à plat
+    const e1=ef(a),e2=ef(b);if(e1&&e2)out.drift=Math.round((e1-e2)/e1*1000)/10;
+  }
+  return out;
+}
+const avg=a=>{const f=a.filter(x=>x!=null);return f.length?f.reduce((x,y)=>x+y,0)/f.length:null};
+
+async function runDetail(){
+  const btn=$('#btnDetail');btn.disabled=true;
+  try{
+    if(!ST.refresh)throw new Error('connecte d\'abord Strava (onglet Import / Export)');
+    const todo=detailTodo();let done=0,fail=0;
+    for(const s of todo.slice(0,20)){
+      flash('#msgDetail',`Analyse ${done+1}/${Math.min(20,todo.length)} : ${s.date} ${s.title}…`);
+      try{
+        const st=await stGet(`/activities/${s.stravaId}/streams?keys=time,heartrate,altitude,distance,moving&key_by_type=true`);
+        const d=analyzeStreams(st,s);s.detail=d||{analyzedAt:new Date().toISOString(),empty:true};done++;
+      }catch(e){fail++;if(/429|Rate Limit/i.test(e.message)){flash('#msgDetail','Limite Strava atteinte (100 requêtes / 15 min). Relance dans un quart d\'heure.',true);break}}
+      save();await new Promise(r=>setTimeout(r,250));
+    }
+    render();
+    const rest=detailTodo().length;
+    flash('#msgDetail',`${done} séance(s) analysée(s)${fail?', '+fail+' échec(s)':''}.${rest?' Encore '+rest+' à traiter : relance le bouton.':' Tout est à jour.'}`);
+  }catch(e){flash('#msgDetail','Analyse impossible : '+e.message,true)}
+  finally{btn.disabled=false}
+}
+function detailTodo(){const lim=addDays(today0(),-365);
+  return DB.sessions.filter(s=>s.stravaId&&!s.detail&&['trail','route','marche','ski'].includes(s.sport)&&parseD(s.date)>=lim)
+    .sort((a,b)=>b.date.localeCompare(a.date))}
+$('#btnDetail').onclick=runDetail;
+
+/* --- Indicateurs synthétiques sur une fenêtre --- */
+function windowStats(days){
+  const from=addDays(today0(),-days);const ss=DB.sessions.filter(s=>parseD(s.date)>from);
+  const runs=ss.filter(isRunLike);
+  const sum=(a,k)=>a.reduce((x,s)=>x+(s[k]||0),0);
+  // part du temps en endurance facile (Z1-Z2) : flux si dispo, sinon FC moyenne de la séance
+  let easy=0,tot=0,fromStreams=0;
+  for(const s of runs){if(s.detail?.zt){const z=s.detail.zt;easy+=(z[0]||0)+(z[1]||0);tot+=z.reduce((a,b)=>a+b,0);fromStreams++}
+    else if(s.fcMoy&&s.durationS){const z=zoneOf(s.fcMoy);tot+=s.durationS;if(z<=1)easy+=s.durationS}}
+  return{n:ss.length,runs:runs.length,km:sum(runs,'distanceKm'),dp:sum(runs,'dPlus'),
+    renfo:ss.filter(s=>s.sport==='renfo').length,easyPct:tot?easy/tot*100:null,fromStreams,
+    long:runs.filter(s=>(s.durationS||0)>=7200).length}
+}
+function weeklyRunKm(nWeeks){
+  const res=[];const end=today0();
+  for(let w=nWeeks-1;w>=0;w--){const a=addDays(end,-7*(w+1)),b=addDays(end,-7*w);
+    res.push(DB.sessions.filter(s=>isRunLike(s)&&parseD(s.date)>a&&parseD(s.date)<=b).reduce((x,s)=>x+(s.distanceKm||0),0))}
+  return res;
+}
+function weeklyLoads(nWeeks){
+  const loads=dailyLoads();const res=[];const end=today0();
+  for(let w=nWeeks-1;w>=0;w--){let L=0;for(let d=0;d<7;d++){L+=loads[dayKey(addDays(end,-7*w-d))]||0}res.push(L)}
+  return res;
+}
+
+/* --- Spécialistes : règles d'alerte --- */
+function alerts(){
+  const A=[],p=DB.profile,pm=pmc(),last=pm[pm.length-1];
+  const w7=windowStats(7),w28=windowStats(28);
+  const km=weeklyRunKm(5),chronic=(km[1]+km[2]+km[3]+km[4])/4;
+  if(last&&last.acwr!=null){
+    if(last.acwr>1.5)A.push(['red','Trail','Pic de charge',`Ratio aigu/chronique ${fmt(last.acwr,2)} (> 1,5) : zone de risque de blessure. Allège les 5 à 7 prochains jours.`]);
+    else if(last.acwr>1.3)A.push(['orange','Trail','Charge en hausse rapide',`Ratio aigu/chronique ${fmt(last.acwr,2)} (1,3 – 1,5). Pas de nouvelle hausse cette semaine.`]);
+    else if(last.acwr<.8&&last.ctl>15)A.push(['orange','Trail','Désentraînement',`Ratio ${fmt(last.acwr,2)} : la charge récente est nettement sous ta charge habituelle.`]);
+  }
+  if(chronic>0&&km[0]>chronic*1.5&&km[0]>15)A.push(['red','Trail','Reprise trop rapide en volume',`${fmt(km[0],1)} km cette semaine contre ${fmt(chronic,1)} km/sem en moyenne sur les 4 précédentes (+${Math.round((km[0]/chronic-1)*100)} %). Repère : +10 % par semaine maximum.`]);
+  const wl=weeklyLoads(6);const lastRecup=wl.slice(0,5).some((L,i)=>i>0&&wl[i-1]>0&&L<wl[i-1]*.75);
+  if(w28.runs>=6&&!lastRecup)A.push(['orange','Trail','Pas de semaine allégée',`Aucune baisse de charge ≥ 25 % depuis 5 semaines. Prévois une semaine de récupération.`]);
+  if(w28.easyPct!=null&&w28.runs>=4&&w28.easyPct<75)A.push(['orange','Trail','Pas assez d\'endurance facile',`${Math.round(w28.easyPct)} % du temps de course en Z1-Z2 sur 28 j (cible ≥ 80 %)${w28.fromStreams?'':' — estimation sur FC moyenne, lance l\'analyse détaillée pour affiner'}.`]);
+  const longRuns=DB.sessions.filter(s=>isRunLike(s)&&(s.durationS||0)>=7200&&parseD(s.date)>addDays(today0(),-14));
+  if(longRuns.length&&w28.km<80)A.push(['orange','Trail','Sortie > 2 h en reprise',`${longRuns.length} sortie(s) de plus de 2 h ces 14 jours avec un volume de fond encore bas. Ravitaille dès 30 min (40-60 g/h de glucides).`]);
+  const drifts=DB.sessions.filter(s=>s.detail?.drift!=null&&parseD(s.date)>addDays(today0(),-60)&&(s.durationS||0)>=5400);
+  const badDrift=drifts.filter(s=>s.detail.drift>8);
+  if(badDrift.length)A.push(['orange','Data','Dérive cardiaque élevée',`${badDrift.length} sortie(s) longue(s) avec un découplage > 8 % : endurance de fond ou ravitaillement à travailler.`]);
+  if(w28.renfo<4)A.push([w28.renfo===0?'red':'orange','Renfo','Renforcement délaissé',`${w28.renfo} séance(s) de renfo sur 28 j (cible : 2 par semaine).`]);
+  if(p.poids&&p.poidsForme&&p.poids-p.poidsForme>=2)A.push(['orange','Data','Écart au poids de forme',`${fmt(p.poids,1)} kg pour ${fmt(p.poidsForme,1)} kg de référence (+${fmt(p.poids-p.poidsForme,1)} kg, soit environ ${Math.round((p.poids/p.poidsForme-1)*100)} % de VAM en moins à puissance égale).`]);
+  const age=p.recalAt?(Date.now()-new Date(p.recalAt))/DAY:null;
+  if(age==null||age>60)A.push(['orange','Data','Référentiel à recaler',age==null?'Les valeurs du profil n\'ont jamais été recalées sur tes données.':`Dernier recalage il y a ${Math.round(age)} jours.`]);
+  if(!A.some(a=>a[0]==='red'||a[0]==='orange'))A.push(['green','Data','Rien à signaler','Charge, récupération et répartition des intensités dans les clous.']);
+  return A;
+}
+
+/* --- Recalage du référentiel --- */
+const fracVMA=min=>min<=6?1:Math.max(.7,1-.055*Math.log(min/6));   // part de VMA tenable selon la durée
+function recal(){
+  const p=DB.profile,R=[],lim120=addDays(today0(),-120),lim365=addDays(today0(),-365);
+  // FC max : plus haute valeur fiable sur 12 mois
+  // FC max : une valeur observée n'est qu'une borne basse → on ne propose que de la relever
+  const hrs=DB.sessions.filter(s=>parseD(s.date)>lim365).map(s=>({v:Math.max(s.detail?.hrMax||0,s.fcMax||0),s})).filter(x=>x.v&&x.v<215).sort((a,b)=>b.v-a.v);
+  if(hrs.length){const v=hrs[0].v,up=v>(p.fcMax||0);R.push({k:'fcMax',label:'FC max',cur:p.fcMax,prop:up?v:p.fcMax,unit:'bpm',
+    how:up?`Max observé ${v} bpm (${hrs[0].s.date}), au-dessus de la valeur actuelle.`
+      :`Max observé ${v} bpm (${hrs[0].s.date}) : ${p.fcMax-v<=5?'confirme':'ne contredit pas'} la valeur actuelle (on ne baisse jamais la FC max sur des sorties non maximales).`,
+    conf:p.fcMax-v<=5?'bonne':'moyenne'})}
+  // VMA : efforts quasi maximaux (FC moy ≥ 90 % FCmax) de 4 à 75 min sur terrain plat, vitesse / part de VMA tenable
+  const cands=DB.sessions.filter(s=>(s.sport==='route'||s.sport==='trail')&&parseD(s.date)>lim120&&s.distanceKm&&s.durationS&&s.fcMoy
+    &&s.fcMoy>=.9*p.fcMax&&s.durationS>=240&&s.durationS<=4500&&(s.dPlus||0)/s.distanceKm<15)
+    .map(s=>{const v=s.distanceKm/(s.durationS/3600);return{s,v,vma:v/fracVMA(s.durationS/60)}}).sort((a,b)=>b.vma-a.vma);
+  if(cands.length){const c=cands[0];R.push({k:'vma',label:'VMA',cur:p.vma,prop:Math.round(c.vma*10)/10,unit:'km/h',
+    how:`${c.s.date} : ${fmt(c.s.distanceKm,2)} km en ${fmtDur(c.s.durationS)} (${fmt(c.v,1)} km/h) à ${c.s.fcMoy} bpm, effort tenu ≈ ${Math.round(fracVMA(c.s.durationS/60)*100)} % de VMA.`,conf:c.s.durationS<=1800?'bonne':'moyenne'})}
+  else R.push({k:'vma',label:'VMA',cur:p.vma,prop:null,unit:'km/h',how:'Aucun effort quasi maximal (FC ≥ 90 % FCmax) sur plat ces 4 derniers mois. Fais un test (VAMEVAL ou 5 km à fond).',conf:'—'});
+  // VAM : meilleure montée de 10 min ; corrigée vers l'effort max si la FC était sous-maximale
+  const vamOf=key=>{const c=DB.sessions.filter(s=>s.detail?.[key]&&parseD(s.date)>lim120).map(s=>{const b=s.detail[key];
+      const hrr=b.hr?hrrOf(b.hr):null;const corr=hrr&&hrr<.9?Math.min(1.35,(.9/Math.max(.55,hrr))**.75):1; // extrapolation prudente vers ~90 % HRR
+      return{s,b,v:b.v*corr,corr}}).sort((a,b)=>b.v-a.v);return c[0]};
+  for(const [k,key,label] of [['vamCourable','vamCourable','VAM terrain courable'],['vamRaide','vamRaide','VAM terrain raide']]){
+    const c=vamOf(key);
+    if(c)R.push({k,label,cur:p[k],prop:Math.round(c.v/10)*10,unit:'m/h',
+      how:`${c.s.date} : ${c.b.v} m/h sur 10 min à ${c.b.gr} %${c.b.hr?' et '+c.b.hr+' bpm':''}${c.corr>1.01?` ; FC sous-maximale, extrapolé ×${fmt(c.corr,2)} vers un effort seuil`:''}.`,conf:c.corr>1.15?'faible':c.corr>1.01?'moyenne':'bonne'});
+    else R.push({k,label,cur:p[k],prop:null,unit:'m/h',how:'Pas de montée analysée sur 4 mois. Lance « Analyser les séances ».',conf:'—'});
+  }
+  if(ST.athlete?.weight)R.push({k:'poids',label:'Poids',cur:p.poids,prop:Math.round(ST.athlete.weight*10)/10,unit:'kg',how:'Poids renseigné sur Strava.',conf:'bonne'});
+  return R;
+}
+function renderRecal(){
+  const R=recal();
+  $('#tRecal').innerHTML='<tr><th>Paramètre</th><th class="num">Actuel</th><th class="num">Proposé</th><th>Méthode</th><th>Confiance</th><th></th></tr>'+
+    R.map((r,i)=>`<tr><td>${r.label}</td><td class="num">${r.cur??'—'} ${r.unit}</td><td class="num"><b>${r.prop??'—'}</b> ${r.prop!=null?r.unit:''}</td>
+      <td style="white-space:normal;min-width:260px;font-size:13px">${esc(r.how)}</td><td>${r.conf}</td>
+      <td>${r.prop!=null&&r.prop!==r.cur?`<button class="btn small ghost" data-recal="${i}">Appliquer</button>`:''}</td></tr>`).join('')+
+    (R.some(r=>r.prop!=null&&r.prop!==r.cur)?`<tr><td colspan="6"><button class="btn small" data-recal="all">Tout appliquer</button></td></tr>`:'');
+  $('#tRecal').onclick=e=>{const b=e.target.closest('[data-recal]');if(!b)return;
+    const list=(b.dataset.recal==='all'?R:[R[+b.dataset.recal]]).filter(r=>r.prop!=null&&r.prop!==r.cur);
+    list.forEach(r=>{if(r.prop!=null)DB.profile[r.k]=r.prop});DB.profile.recalAt=new Date().toISOString();save();render();
+    flash('#msgRecal',list.map(r=>r.label).join(', ')+' mis à jour.')};
+}
+
+/* --- Graphique SVG --- */
+function lineChart(rows,{h=240}={}){
+  if(!rows.length)return'<p class="muted">Pas encore de données.</p>';
+  const W=720,H=h,pl=34,pr=8,pt=10,pb=24,iw=W-pl-pr,ih=H-pt-pb;
+  const maxV=Math.max(10,...rows.map(r=>Math.max(r.ctl,r.atl))),minV=Math.min(0,...rows.map(r=>r.tsb));
+  const maxL=Math.max(1,...rows.map(r=>r.load||0));
+  const x=i=>pl+i*(iw/Math.max(1,rows.length-1)),y=v=>pt+ih-(v-minV)/(maxV-minV)*ih;
+  const path=k=>rows.map((r,i)=>(i?'L':'M')+x(i).toFixed(1)+','+y(r[k]).toFixed(1)).join('');
+  const bw=Math.max(1,iw/rows.length*.7);
+  const bars=rows.map((r,i)=>r.load?`<rect x="${(x(i)-bw/2).toFixed(1)}" y="${(pt+ih-(r.load/maxL)*ih*.45).toFixed(1)}" width="${bw.toFixed(1)}" height="${((r.load/maxL)*ih*.45).toFixed(1)}" fill="var(--line)"/>`:'').join('');
+  const ticks=[];const step=Math.max(1,Math.round(rows.length/6));
+  for(let i=0;i<rows.length;i+=step)ticks.push(`<text x="${x(i)}" y="${H-6}" text-anchor="middle">${new Date(rows[i].date+'T12:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'short'})}</text>`);
+  const g=[0,Math.round(maxV/2),Math.round(maxV)].map(v=>`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-dasharray="${v?'3 3':''}"/><text x="${pl-4}" y="${y(v)+4}" text-anchor="end">${v}</text>`).join('');
+  const futureIdx=rows.findIndex(r=>r.future);
+  const fut=futureIdx>0?`<rect x="${x(futureIdx)}" y="${pt}" width="${W-pr-x(futureIdx)}" height="${ih}" fill="var(--accent-soft)" opacity=".5"/><text x="${x(futureIdx)+4}" y="${pt+12}">projection</text>`:'';
+  return`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Courbes de forme, fatigue et fraîcheur">${fut}${g}${bars}
+    <path d="${path('tsb')}" fill="none" stroke="var(--z1)" stroke-width="1.6"/>
+    <path d="${path('atl')}" fill="none" stroke="var(--z4)" stroke-width="1.6"/>
+    <path d="${path('ctl')}" fill="none" stroke="var(--accent)" stroke-width="2.4"/>${ticks.join('')}</svg>`;
+}
+
+function renderAnalyse(){
+  const pm=pmc(),last=pm[pm.length-1]||{ctl:0,atl:0,tsb:0,acwr:null};
+  const w28=windowStats(28);
+  const cls=(v,o,r)=>v==null?'':v>r?'red':v>o?'orange':'green';
+  const k=[
+    [fmt(last.ctl,0),'Forme (CTL)',''],
+    [fmt(last.atl,0),'Fatigue (ATL)',''],
+    [(last.tsb>0?'+':'')+fmt(last.tsb,0),'Fraîcheur (TSB)',last.tsb<-30?'red':last.tsb<-10?'orange':'green'],
+    [last.acwr==null?'—':fmt(last.acwr,2),'Ratio aigu / chronique',cls(last.acwr,1.3,1.5)],
+    [w28.easyPct==null?'—':Math.round(w28.easyPct)+' %','Endurance facile 28 j',w28.easyPct==null?'':w28.easyPct<70?'red':w28.easyPct<80?'orange':'green'],
+    [fmt(w28.renfo/4,1),'Renfo / semaine (28 j)',w28.renfo<4?(w28.renfo?'orange':'red'):'green']];
+  $('#aKpis').innerHTML=k.map(([b,s,c])=>`<div class="kpi ${c}"><b>${b}</b><span>${s}</span></div>`).join('');
+  $('#aAlerts').innerHTML=alerts().map(([c,who,t,txt])=>`<div class="alert ${c}"><div><span class="who">${who}</span><b>${esc(t)}</b><span class="muted">${esc(txt)}</span></div></div>`).join('');
+  const range=+$('#aRange').value;$('#aChart').innerHTML=lineChart(pm.slice(-range));
+  const todo=detailTodo().length,done=DB.sessions.filter(s=>s.detail&&!s.detail.empty).length;
+  $('#aDetailInfo').textContent=`${done} séance(s) déjà analysée(s) en détail, ${todo} en attente (12 derniers mois). Chaque séance analysée donne le temps réel par zone, la meilleure VAM sur 10 et 30 min et la dérive cardiaque. Limite Strava : 20 séances par clic.`;
+  $('#btnDetail').style.display=todo?'':'none';
+  renderRecal();
+  const longs=DB.sessions.filter(s=>isRunLike(s)&&(s.durationS||0)>=5400).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
+  $('#tDur').innerHTML=longs.length?'<tr><th>Date</th><th>Titre</th><th class="num">Durée</th><th class="num">D+</th><th class="num">FC moy</th><th class="num">Dérive</th><th class="num">VAM 30 min</th></tr>'+
+    longs.map(s=>`<tr><td>${s.date}</td><td>${esc(s.title)}</td><td class="num">${fmtDur(s.durationS)}</td><td class="num">${fmt(s.dPlus)}</td><td class="num">${s.fcMoy??''}</td>
+      <td class="num">${s.detail?.drift!=null?`<span class="tag ${s.detail.drift>8?'warn':''}">${fmt(s.detail.drift,1)} %</span>`:'—'}</td><td class="num">${s.detail?.vamLong?s.detail.vamLong.v+' m/h':'—'}</td></tr>`).join('')
+    :'<tr><td class="muted">Aucune sortie de plus de 1 h 30.</td></tr>';
+  $('#aMethod').innerHTML=`<p><b>Charge (TRIMP de Banister)</b> : durée × HRr × 0,64·e<sup>1,92·HRr</sup>, avec HRr = (FC − FC repos)/(FC max − FC repos). Calcul zone par zone quand le flux Strava est analysé, sur la FC moyenne sinon, sur le RPE ou une valeur type du sport à défaut.</p>
+    <p><b>Forme / fatigue / fraîcheur</b> : moyennes exponentielles de la charge quotidienne sur 42 j (CTL) et 7 j (ATL) ; TSB = CTL − ATL de la veille. Ratio aigu/chronique = ATL/CTL : zone sûre 0,8 – 1,3, risque au-delà de 1,5.</p>
+    <p><b>VMA</b> : vitesse d'un effort quasi maximal (FC ≥ 90 % FC max) divisée par la part de VMA tenable sur sa durée (100 % jusqu'à 6 min, puis 1 − 0,055·ln(durée/6)).</p>
+    <p><b>VAM</b> : meilleur dénivelé net par heure sur 10 min de temps en mouvement, pente 6-18 % (courable) ou &gt; 18 % (raide). Si la FC était sous le seuil, extrapolation prudente vers 90 % de HRR (exposant 0,75, plafond +35 %).</p>
+    <p><b>Dérive cardiaque</b> : efficacité = (distance + 10 × D+)/temps ÷ FC, comparée entre 1<sup>re</sup> et 2<sup>de</sup> moitié. Au-delà de 5-8 %, l'endurance de fond ou le ravitaillement lâchent.</p>`;
+}
+$('#aRange').onchange=renderAnalyse;
+
+/* =====================================================================
+   SIMULATION
+   ===================================================================== */
+function simPrefill(){
+  if(!$('#sDate').value)$('#sDate').value=dayKey(addDays(today0(),16*7));
+  // charge de départ soutenable : forme actuelle (CTL) × 7 jours × 1,1
+  // et pas plus de 1,2 × la moyenne hebdo des 4 dernières semaines (ratio aigu/chronique ≤ 1,2 dès la 1re semaine)
+  if(!$('#sStart').value){const pm=pmc(),c=pm[pm.length-1]?.ctl||0,a4=avg(weeklyLoads(4))||0;
+    $('#sStart').value=Math.max(80,Math.round(Math.min(c*7*1.1,a4*1.2||Infinity)))}
+  if(!$('#pPoids').value)$('#pPoids').value=DB.profile.poids||'';
+}
+function runSim(){
+  const raceD=parseD($('#sDate').value),start=today0();
+  const weeks=Math.ceil((raceD-start)/DAY/7);
+  if(!(weeks>=1))return $('#sOut').innerHTML='<p class="msg err" style="display:block">Choisis une date de course dans le futur.</p>';
+  const obj=$('#sType').value==='objectif',prog=(+$('#sProg').value||0)/100,cyc=+$('#sCycle').value,rec=(+$('#sRecup').value||0)/100;
+  const taper=obj?Math.min(3,+$('#sTaper').value||0):0,cap=+$('#sCap').value||Infinity;
+  let base=+$('#sStart').value||300;
+  // plan hebdomadaire : progression par blocs, semaine de récup, affûtage (-30 % puis -50 %)
+  const plan=[];let blockW=0,peak=base;
+  const TAPER={1:[.5],2:[.7,.5],3:[.8,.65,.5]};
+  for(let w=0;w<weeks;w++){
+    const fromEnd=weeks-w;let L,kind;
+    if(taper&&fromEnd<=taper){L=peak*TAPER[taper][taper-fromEnd];kind='affûtage'}
+    else if(blockW===cyc){L=peak*(1-rec);kind='récup';blockW=0}
+    else{if(w>0)base=Math.min(cap,base*(1+prog));L=base;peak=base;kind='dev';blockW++}
+    plan.push({w,L:Math.round(L),kind});
+  }
+  // simulation quotidienne CTL/ATL à partir de l'état actuel (6 jours chargés sur 7, 1 jour off)
+  const hist=pmc();const cur=hist[hist.length-1]||{ctl:0,atl:0};
+  let ctl=cur.ctl,atl=cur.atl;const rows=hist.slice(-42).map(r=>({...r}));
+  const pattern=[.12,.18,0,.16,.12,.28,.14];   // répartition type sur la semaine, sortie longue le week-end
+  // ratio aigu/chronique en sommes glissantes (7 j / moyenne hebdo sur 28 j), évalué en fin de semaine
+  const series=hist.slice(-28).map(r=>r.load);
+  let peakAcwr=0;
+  for(const p of plan){p.ctlStart=ctl;for(let d=0;d<7;d++){const date=addDays(start,p.w*7+d+1);if(date>raceD)break;
+    const L=p.L*pattern[(date.getDay()+6)%7];const tsb=ctl-atl;ctl+=(L-ctl)*KC;atl+=(L-atl)*KA;series.push(L);
+    rows.push({date:dayKey(date),load:L,ctl,atl,tsb,future:true})}
+    const s28=series.slice(-28).reduce((a,b)=>a+b,0)/4,s7=series.slice(-7).reduce((a,b)=>a+b,0);
+    p.acwr=s28>0?s7/s28:null;if(p.acwr&&p.kind!=='récup')peakAcwr=Math.max(peakAcwr,p.acwr);
+    p.ctlEnd=ctl;p.tsbEnd=ctl-atl}
+  const lastRow=rows[rows.length-1];
+  // conversion TRIMP -> km sur tes sorties récentes
+  const recent=DB.sessions.filter(s=>isRunLike(s)&&parseD(s.date)>addDays(today0(),-90)&&s.distanceKm);
+  const tPerKm=recent.length?recent.reduce((a,s)=>a+loadOf(s).v,0)/recent.reduce((a,s)=>a+s.distanceKm,0):null;
+  const dpPerKm=recent.length?recent.reduce((a,s)=>a+(s.dPlus||0),0)/recent.reduce((a,s)=>a+s.distanceKm,0):null;
+  const warn=[];
+  if(peakAcwr>1.5)warn.push(['red',`Ratio aigu/chronique max ${fmt(peakAcwr,2)} : la première semaine monte trop vite par rapport à ta charge actuelle. Baisse la charge de départ.`]);
+  else if(peakAcwr>1.3)warn.push(['orange',`Ratio aigu/chronique max ${fmt(peakAcwr,2)} : acceptable ponctuellement, surveille les douleurs.`]);
+  if(prog>.1)warn.push(['orange',`Progression de ${Math.round(prog*100)} %/sem : au-delà des 10 % recommandés.`]);
+  if(obj){const t=lastRow.tsb;warn.push([t>=5&&t<=25?'green':'orange',`Fraîcheur le jour J : ${t>0?'+':''}${fmt(t,0)} (cible +5 à +25 pour une course objectif).`])}
+  warn.push(['green',`Forme (CTL) : ${fmt(cur.ctl,0)} aujourd'hui → ${fmt(lastRow.ctl,0)} le jour J (+${Math.round((lastRow.ctl/Math.max(1,cur.ctl)-1)*100)} %).`]);
+  $('#sOut').innerHTML=`<div style="margin-top:14px">${lineChart(rows,{h:220})}</div>
+    ${warn.map(([c,t])=>`<div class="alert ${c}" style="margin-top:8px"><div>${esc(t)}</div></div>`).join('')}
+    <div class="scroll" style="margin-top:10px"><table><tr><th>Sem.</th><th>Du</th><th>Type</th><th class="num">TRIMP</th><th class="num">≈ km</th><th class="num">≈ D+</th><th class="num">Ratio 7/28</th><th class="num">CTL fin</th><th class="num">TSB fin</th></tr>
+    ${plan.map(p=>`<tr><td>${p.w+1}</td><td>${addDays(start,p.w*7+1).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'})}</td>
+      <td><span class="tag ${p.kind==='dev'?'':'warn'}">${p.kind==='dev'?'développement':p.kind}</span></td><td class="num">${p.L}</td>
+      <td class="num">${tPerKm?fmt(p.L/tPerKm,0):'—'}</td><td class="num">${tPerKm&&dpPerKm?fmt(p.L/tPerKm*dpPerKm,0):'—'}</td>
+      <td class="num">${p.acwr==null?'—':`<span class="tag ${p.acwr>1.3?'warn':''}">${fmt(p.acwr,2)}</span>`}</td>
+      <td class="num">${fmt(p.ctlEnd,0)}</td><td class="num">${fmt(p.tsbEnd,0)}</td></tr>`).join('')}</table></div>
+    <p class="muted" style="font-size:13px">Équivalences km et D+ calculées sur tes 90 derniers jours (${tPerKm?fmt(tPerKm,1)+' TRIMP/km, '+fmt(dpPerKm,0)+' m D+/km':'pas assez de données'}). La charge est répartie type : sortie longue le samedi, repos le mercredi.</p>`;
+}
+$('#btnSim').onclick=runSim;
+
+/* --- Prédiction : modèle puissance sur l'effort-km, calé sur tes sorties --- */
+function runPred(){
+  const p=DB.profile,km=+$('#pKm').value,dp=+$('#pDp').value||0,dm=+$('#pDm').value||0,tech=+$('#pTech').value;
+  const wJ=+$('#pPoids').value||p.poids,gain=(+$('#pGain').value||0)/100;
+  if(!km)return;
+  const ek=(k,u,d)=>k+u/100+d/400;       // effort-km : 100 m D+ ≈ 1 km, 400 m D- ≈ 1 km
+  const runs=DB.sessions.filter(s=>(s.sport==='trail'||s.sport==='route')&&s.distanceKm>=5&&s.durationS&&parseD(s.date)>addDays(today0(),-240))
+    .map(s=>({x:Math.log(ek(s.distanceKm,s.dPlus||0,s.dMinus??s.dPlus??0)),y:Math.log(s.durationS/60),s}));
+  let a,b,n=runs.length,how;
+  if(n>=6){const mx=avg(runs.map(r=>r.x)),my=avg(runs.map(r=>r.y));
+    b=runs.reduce((t,r)=>t+(r.x-mx)*(r.y-my),0)/runs.reduce((t,r)=>t+(r.x-mx)**2,0);
+    b=Math.min(1.15,Math.max(1.02,b));a=my-b*mx;
+    // on cale sur le tiers le plus rapide de tes sorties (les sorties faciles ne représentent pas ton allure de course)
+    const res=runs.map(r=>r.y-(a+b*r.x)).sort((x,y)=>x-y);a+=res[Math.floor(res.length/3)];
+    how=`ajusté sur ${n} sorties des 8 derniers mois (exposant de fatigue ${fmt(b,2)})`}
+  else{b=1.07;const v=(p.vma||15)*.78;a=Math.log(60/v);how='modèle par défaut (pas assez de sorties) basé sur la VMA'}
+  const E=ek(km,dp,dm);let tMin=Math.exp(a+b*Math.log(E))*tech;
+  const climbShare=(dp/100)/E;
+  const wFactor=1+climbShare*((wJ/(p.poids||wJ))-1);   // le poids pèse surtout sur la part montée
+  tMin=tMin*wFactor/(1+gain);
+  const lo=tMin*.93,hi=tMin*1.07,h=tMin/60;
+  const carbs=h>1.25?[Math.round((h-.5)*40),Math.round((h-.5)*60)]:null;
+  $('#pOut').innerHTML=`<div class="result"><div class="muted">Temps estimé (effort course)</div><div class="big">${fmtDur(tMin*60)}</div>
+    <div class="muted">Fourchette ${fmtDur(lo*60)} – ${fmtDur(hi*60)} · effort-km ${fmt(E,1)} · ${fmt(km/h,1)} km/h · ${fmt(dp/h,0)} m D+/h en moyenne</div></div>
+    <div style="margin-top:10px;font-size:14px">
+      ${h>2?`<div class="alert orange"><div><b>Au-delà de ta frontière des 2 h</b><span class="muted">Ravitaillement dès la 30<sup>e</sup> minute : ${carbs[0]} à ${carbs[1]} g de glucides au total (40-60 g/h), 400-750 ml d'eau par heure selon la chaleur.</span></div></div>`
+        :carbs?`<div class="alert green"><div><b>Ravitaillement</b><span class="muted">${carbs[0]} à ${carbs[1]} g de glucides au total.</span></div></div>`:''}
+      ${wJ&&p.poids&&wJ!==p.poids?(()=>{const dl=tMin*60-tMin*60/wFactor;return`<div class="alert green"><div><b>Effet du poids</b><span class="muted">${fmt(wJ,1)} kg au lieu de ${fmt(p.poids,1)} kg : ${dl<0?'−':'+'}${fmtDur(Math.abs(dl))} environ (part montée ${Math.round(climbShare*100)} % de l'effort).</span></div></div>`})():''}
+    </div>
+    <p class="muted" style="font-size:13px">Méthode : temps = a × effort-km<sup>b</sup>, ${how}, × technicité ${fmt(tech,2)}. À recaler après chaque course réelle.</p>`;
+}
+$('#btnPred').onclick=runPred;
+
+const _render=render;
+render=function(){_render();renderAnalyse();simPrefill();
+  const p=DB.profile;$('#profDate').textContent=p.recalAt?`Dernier recalage : ${new Date(p.recalAt).toLocaleDateString('fr-FR')}. Le recalage se fait dans l'onglet Analyse.`:'Valeurs jamais recalées sur tes données : passe par l\'onglet Analyse.'};
 
 render();
 stHandleCallback();
