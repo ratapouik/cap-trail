@@ -78,6 +78,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
       <h2 style="margin:0">Séances réalisées</h2>
       <div class="row">
         <select id="fSport"><option value="">Tous sports</option></select>
+        <button class="btn small ghost" id="btnStQuick" style="display:none">↻ Strava</button>
         <button class="btn small" id="btnAdd">+ Séance</button>
       </div>
     </div>
@@ -105,6 +106,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
   <div class="card">
     <h2>Référentiel de profil</h2>
     <div class="grid" id="profFields"></div>
+    <div class="row" id="stProfile" style="margin-top:12px;display:none"></div>
   </div>
   <div class="card">
     <h2>Zones de FC (% de la FC max)</h2>
@@ -121,6 +123,21 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 
 <!-- DONNEES -->
 <section id="donnees">
+  <div class="card">
+    <h2>Synchronisation Strava</h2>
+    <p class="muted" style="margin-top:0" id="stStatus"></p>
+    <div class="grid" id="stConfig">
+      <label>Client ID Strava<input id="stClientId" inputmode="numeric" placeholder="ex. 123456"></label>
+      <label style="grid-column:span 2">URL du relais Cloudflare<input id="stRelay" placeholder="https://cap-trail-strava.xxx.workers.dev"></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="btnStConnect">Connecter Strava</button>
+      <button class="btn" id="btnStSync">Synchroniser maintenant</button>
+      <button class="btn ghost" id="btnStFull">Resynchroniser 6 mois</button>
+      <button class="btn danger" id="btnStOff">Déconnecter</button>
+    </div>
+    <div class="msg" id="msgSt"></div>
+  </div>
   <div class="card">
     <h2>Import Runalyze (CSV)</h2>
     <p class="muted" style="margin-top:0">Colonnes attendues : distance, s, elevationUp, elevationDown, vo2max, pulseAvg, pulseMax, sportid, percentageHilly, time, title. Les doublons sont ignorés.</p>
@@ -169,7 +186,7 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 <script>
 /* ===== Modèle de données ===== */
 const KEY='captrail_v1';
-const SPORTS={trail:'Trail',route:'Course route',renfo:'Renfo / muscu',velo:'Vélo',ski:'Ski / rando',marche:'Marche',autre:'Autre'};
+const SPORTS={trail:'Trail',route:'Course route',renfo:'Renfo / muscu',velo:'Vélo',ski:'Ski',marche:'Rando / marche',autre:'Autre'};
 const DEFAULT={
   version:1,
   profile:{fcMax:188,fcRepos:50,vma:17.5,vamCourable:1100,vamRaide:1000,poids:71.8,poidsForme:69,ftp:205,
@@ -203,7 +220,7 @@ $('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;
   render()};
 
 /* ===== Journal ===== */
-function render(){renderKpis();renderJournal();renderWeeks();renderProfile()}
+function render(){renderKpis();renderJournal();renderWeeks();renderProfile();renderStrava()}
 function renderKpis(){
   const now=new Date(),d28=new Date(now-28*864e5),d7=new Date(now-7*864e5);
   const runs=DB.sessions.filter(isRun);
@@ -374,7 +391,126 @@ $('#fileJson').onchange=async e=>{
 };
 $('#btnReset').onclick=()=>{if(confirm('Effacer toutes les données de ce navigateur ? Pense à exporter le JSON avant.')){DB=structuredClone(DEFAULT);save();render()}};
 
+/* ===== Strava (via relais Cloudflare) =====
+   Jetons stockés à part (clé captrail_strava) : ils ne sortent jamais dans l'export JSON. */
+const ST_KEY='captrail_strava';
+let ST=(()=>{try{return JSON.parse(localStorage.getItem(ST_KEY))||{}}catch(e){return{}}})();
+function stSave(){try{localStorage.setItem(ST_KEY,JSON.stringify(ST))}catch(e){}}
+const redirectUri=()=>location.origin+location.pathname;
+const STRAVA_MAP={TrailRun:'trail',Run:'route',VirtualRun:'route',WeightTraining:'renfo',Workout:'renfo',Crossfit:'renfo',Yoga:'renfo',Pilates:'renfo',
+  Ride:'velo',VirtualRide:'velo',MountainBikeRide:'velo',GravelRide:'velo',EBikeRide:'velo',EMountainBikeRide:'velo',
+  Hike:'marche',Walk:'marche',BackcountrySki:'ski',NordicSki:'ski',AlpineSki:'ski',Snowshoe:'ski'};
+
+function renderStrava(){
+  const on=!!ST.refresh;
+  $('#stClientId').value=ST.clientId||'';$('#stRelay').value=ST.relay||'';
+  $('#btnStConnect').style.display=on?'none':'';
+  for(const id of ['#btnStSync','#btnStFull','#btnStOff'])$(id).style.display=on?'':'none';
+  $('#btnStQuick').style.display=on?'':'none';
+  $('#stStatus').textContent=on
+    ?`Connecté${ST.athleteName?' ('+ST.athleteName+')':''}. Dernière synchro : ${ST.lastSync?new Date(ST.lastSync*1000).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):'jamais'}.`
+    :'Non connecté. Renseigne le Client ID de ton application Strava et l\'URL de ton relais Cloudflare, puis clique sur « Connecter Strava ».';
+  const box=$('#stProfile');const a=ST.athlete;
+  if(a&&(a.weight||a.ftp)){box.style.display='flex';
+    box.innerHTML=`<span class="muted">Valeurs Strava : ${a.weight?fmt(a.weight,1)+' kg':''}${a.weight&&a.ftp?' · ':''}${a.ftp?'FTP '+a.ftp+' W':''}</span><button class="btn small ghost" id="btnStApply">Reprendre dans le profil</button>`;
+    $('#btnStApply').onclick=()=>{if(a.weight)DB.profile.poids=Math.round(a.weight*10)/10;if(a.ftp)DB.profile.ftp=a.ftp;save();render();flash('#msgProf','Poids et FTP repris de Strava.')};
+  }else box.style.display='none';
+}
+async function relay(path,opts={}){
+  if(!ST.relay)throw new Error('URL du relais non renseignée');
+  let r;
+  try{r=await fetch(ST.relay.replace(/\/+$/,'')+path,opts)}catch(e){throw new Error('relais injoignable ('+e.message+'). Vérifie l\'URL du relais.')}
+  const t=await r.text();let j;try{j=JSON.parse(t)}catch(e){j={message:t}}
+  if(!r.ok){
+    if(r.status===401){ST.access=null;stSave()}
+    throw new Error((j&&j.message)||('HTTP '+r.status));
+  }
+  return j;
+}
+function stStore(j){ST.access=j.access_token;ST.refresh=j.refresh_token||ST.refresh;ST.expires=j.expires_at;if(j.athlete&&j.athlete.firstname)ST.athleteName=j.athlete.firstname;stSave()}
+async function stToken(){
+  if(!ST.refresh)throw new Error('Strava non connecté');
+  if(!ST.access||Date.now()/1000>(ST.expires||0)-120)
+    stStore(await relay('/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:ST.refresh})}));
+  return ST.access;
+}
+async function stGet(path){const t=await stToken();return relay('/api'+path,{headers:{Authorization:'Bearer '+t}})}
+
+function stMap(a){
+  const loc=String(a.start_date_local||a.start_date||'');
+  return{date:loc.slice(0,10),heure:loc.slice(11,16),title:a.name||'',
+    distanceKm:a.distance!=null?Math.round(a.distance)/1000:null,durationS:a.moving_time??null,elapsedS:a.elapsed_time??null,
+    dPlus:a.total_elevation_gain!=null?Math.round(a.total_elevation_gain):null,
+    fcMoy:a.average_heartrate!=null?Math.round(a.average_heartrate):null,fcMax:a.max_heartrate!=null?Math.round(a.max_heartrate):null,
+    stravaType:a.sport_type||a.type,effortRelatif:a.suffer_score??null};
+}
+function stFindTwin(m){
+  // même séance déjà importée depuis Runalyze ou saisie à la main
+  return DB.sessions.find(s=>!s.stravaId&&s.date===m.date&&s.distanceKm!=null&&m.distanceKm!=null
+    &&Math.abs(s.distanceKm-m.distanceKm)<=Math.max(0.3,m.distanceKm*0.03)
+    &&(s.durationS==null||m.durationS==null||Math.abs(s.durationS-m.durationS)<=Math.max(120,m.durationS*0.1)));
+}
+async function stSync(full){
+  const btns=['#btnStSync','#btnStFull','#btnStQuick'].map(s=>$(s));btns.forEach(b=>b.disabled=true);
+  flash('#msgSt','Synchronisation en cours…');
+  try{
+    const now=Math.floor(Date.now()/1000);
+    const after=(!full&&ST.lastSync)?ST.lastSync-3*86400:now-183*86400;
+    const all=[];
+    for(let page=1;page<=10;page++){
+      const arr=await stGet(`/athlete/activities?after=${after}&per_page=100&page=${page}`);
+      if(!Array.isArray(arr))throw new Error('réponse inattendue de Strava');
+      all.push(...arr);if(arr.length<100)break;
+    }
+    let add=0,upd=0,merged=0;
+    for(const a of all){
+      const m=stMap(a);if(!m.date)continue;
+      const id=String(a.id);
+      let s=DB.sessions.find(x=>x.stravaId===id);
+      if(s){ // mise à jour des mesures, sans toucher au sport ni au suivi saisi
+        for(const k of ['date','heure','title','distanceKm','durationS','elapsedS','dPlus','fcMoy','fcMax','stravaType','effortRelatif'])if(m[k]!=null)s[k]=m[k];
+        upd++;continue}
+      s=stFindTwin(m);
+      if(s){s.stravaId=id;s.stravaType=m.stravaType;s.elapsedS=m.elapsedS;s.effortRelatif=m.effortRelatif;
+        for(const k of ['fcMoy','fcMax','dPlus','heure'])if(s[k]==null&&m[k]!=null)s[k]=m[k];
+        merged++;continue}
+      DB.sessions.push({id:uid(),source:'strava',stravaId:id,sport:STRAVA_MAP[m.stravaType]||'autre',...m,dMinus:null,rpe:null,fatigue:null,douleurs:'',notes:''});
+      add++;
+    }
+    try{const ath=await stGet('/athlete');ST.athlete={weight:ath.weight||null,ftp:ath.ftp||null};if(ath.firstname)ST.athleteName=ath.firstname}catch(e){}
+    ST.lastSync=now;stSave();save();render();
+    flash('#msgSt',`${all.length} activité(s) lue(s) : ${add} ajoutée(s), ${merged} fusionnée(s) avec une séance existante, ${upd} mise(s) à jour.`);
+  }catch(e){flash('#msgSt','Synchronisation impossible : '+e.message,true)}
+  finally{btns.forEach(b=>b.disabled=false)}
+}
+function stReadConfig(){ST.clientId=$('#stClientId').value.trim();ST.relay=$('#stRelay').value.trim();stSave()}
+$('#btnStConnect').onclick=()=>{
+  stReadConfig();
+  if(!ST.clientId||!ST.relay)return flash('#msgSt','Renseigne le Client ID et l\'URL du relais.',true);
+  location.href='https://www.strava.com/oauth/authorize?'+new URLSearchParams({client_id:ST.clientId,redirect_uri:redirectUri(),
+    response_type:'code',approval_prompt:'auto',scope:'read,activity:read_all,profile:read_all'});
+};
+$('#btnStSync').onclick=()=>stSync(false);
+$('#btnStQuick').onclick=()=>stSync(false);
+$('#btnStFull').onclick=()=>stSync(true);
+$('#btnStOff').onclick=()=>{if(!confirm('Déconnecter Strava ? Les séances déjà synchronisées restent dans le journal.'))return;
+  ST={clientId:ST.clientId,relay:ST.relay};stSave();render();flash('#msgSt','Strava déconnecté. Tu peux aussi retirer l\'accès sur strava.com > Paramètres > Mes applications.')};
+async function stHandleCallback(){
+  const q=new URLSearchParams(location.search);
+  if(!q.has('code')&&!q.has('error'))return;
+  history.replaceState(null,'',redirectUri());
+  document.querySelector('#tabs button[data-t="donnees"]').click();
+  if(q.get('error'))return flash('#msgSt','Connexion refusée sur Strava ('+q.get('error')+').',true);
+  const scope=q.get('scope')||'';
+  if(scope&&!scope.includes('activity:read'))return flash('#msgSt','Il faut cocher l\'accès aux activités sur la page Strava. Relance la connexion.',true);
+  try{
+    stStore(await relay('/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:q.get('code')})}));
+    render();await stSync(true);
+  }catch(e){flash('#msgSt','Connexion impossible : '+e.message,true)}
+}
+
 render();
+stHandleCallback();
 </script>
 </body>
 </html>
