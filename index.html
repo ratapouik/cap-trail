@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cap Trail — Gestion d'entraînement</title>
+<style>
+:root{
+  --bg:#f6f5f1;--card:#ffffff;--ink:#1d2321;--muted:#6b7470;--line:#e2e0d9;
+  --accent:#2f6b4f;--accent-soft:#e3efe8;--warn:#b5651d;--warn-soft:#f8ebdd;--danger:#a83232;
+  --z1:#8fb8d8;--z2:#6fae8a;--z3:#e3c15a;--z4:#e08a4a;--z5:#c9483f;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141816;--card:#1d2321;--ink:#e8ece9;--muted:#9aa59f;--line:#2e3532;
+  --accent:#6fc09a;--accent-soft:#22352c;--warn:#e5a15e;--warn-soft:#3a2c1e;--danger:#e07272;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line)}
+.top{display:flex;align-items:center;gap:12px;padding:12px 16px;max-width:1100px;margin:auto}
+.top h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.2px}
+.top .sub{color:var(--muted);font-size:13px}
+nav{display:flex;gap:4px;padding:0 12px;max-width:1100px;margin:auto;overflow-x:auto}
+nav button{border:0;background:none;color:var(--muted);padding:10px 12px;font:inherit;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+nav button.on{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+main{max-width:1100px;margin:auto;padding:16px}
+section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.card h2{font-size:15px;margin:0 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 9px}
+textarea{min-height:60px;resize:vertical}
+.btn{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:7px;padding:8px 14px;font:inherit;cursor:pointer}
+.btn.ghost{background:none;color:var(--accent)}
+.btn.small{padding:4px 10px;font-size:13px}
+.btn.danger{border-color:var(--danger);color:var(--danger);background:none}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.kpi b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+.kpi span{color:var(--muted);font-size:12px}
+.tag{display:inline-block;padding:1px 8px;border-radius:20px;font-size:12px;background:var(--accent-soft);color:var(--accent)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+.muted{color:var(--muted)}
+.zbar{display:flex;height:10px;border-radius:5px;overflow:hidden;min-width:80px}
+.msg{padding:10px 12px;border-radius:8px;background:var(--accent-soft);color:var(--accent);margin-top:10px;display:none}
+.msg.err{background:var(--warn-soft);color:var(--warn)}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:640px;width:calc(100% - 32px);padding:20px}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+@media (max-width:600px){main{padding:12px}.top .sub{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="top"><h1>Cap Trail</h1><span class="sub">Saison 2026-2027 — gestion d'entraînement</span></div>
+  <nav id="tabs">
+    <button data-t="journal" class="on">Journal</button>
+    <button data-t="semaines">Semaines</button>
+    <button data-t="profil">Profil</button>
+    <button data-t="donnees">Import / Export</button>
+  </nav>
+</header>
+
+<main>
+<!-- JOURNAL -->
+<section id="journal" class="on">
+  <div class="kpis" id="kpis"></div>
+  <div class="card" style="margin-top:16px">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <h2 style="margin:0">Séances réalisées</h2>
+      <div class="row">
+        <select id="fSport"><option value="">Tous sports</option></select>
+        <button class="btn small" id="btnAdd">+ Séance</button>
+      </div>
+    </div>
+    <div class="scroll"><table id="tSessions"></table></div>
+    <p class="muted" id="emptyJ" style="display:none">Aucune séance. Importe ton export Runalyze dans l'onglet « Import / Export » ou ajoute une séance.</p>
+  </div>
+</section>
+
+<!-- SEMAINES -->
+<section id="semaines">
+  <div class="card">
+    <h2>Bilan hebdomadaire (course et trail)</h2>
+    <div class="legend" style="margin-bottom:10px">
+      <span><i style="background:var(--z1)"></i>Z1</span><span><i style="background:var(--z2)"></i>Z2</span>
+      <span><i style="background:var(--z3)"></i>Z3</span><span><i style="background:var(--z4)"></i>Z4</span>
+      <span><i style="background:var(--z5)"></i>Z5</span>
+      <span class="muted">— zone estimée à partir de la FC moyenne de chaque séance</span>
+    </div>
+    <div class="scroll"><table id="tWeeks"></table></div>
+  </div>
+</section>
+
+<!-- PROFIL -->
+<section id="profil">
+  <div class="card">
+    <h2>Référentiel de profil</h2>
+    <div class="grid" id="profFields"></div>
+  </div>
+  <div class="card">
+    <h2>Zones de FC (% de la FC max)</h2>
+    <div class="scroll"><table id="tZones"></table></div>
+  </div>
+  <div class="card">
+    <h2>Correspondance des sports Runalyze</h2>
+    <p class="muted" style="margin-top:0">Runalyze exporte un identifiant numérique par sport. Associe chaque identifiant rencontré à un type.</p>
+    <div class="scroll"><table id="tSports"></table></div>
+  </div>
+  <div class="row"><button class="btn" id="btnSaveProf">Enregistrer le profil</button></div>
+  <div class="msg" id="msgProf"></div>
+</section>
+
+<!-- DONNEES -->
+<section id="donnees">
+  <div class="card">
+    <h2>Import Runalyze (CSV)</h2>
+    <p class="muted" style="margin-top:0">Colonnes attendues : distance, s, elevationUp, elevationDown, vo2max, pulseAvg, pulseMax, sportid, percentageHilly, time, title. Les doublons sont ignorés.</p>
+    <input type="file" id="fileCsv" accept=".csv,text/csv">
+    <div class="msg" id="msgCsv"></div>
+  </div>
+  <div class="card">
+    <h2>Sauvegarde et analyse avec Claude (JSON)</h2>
+    <p class="muted" style="margin-top:0">Les données restent dans ce navigateur. Exporte régulièrement le JSON : c'est ta sauvegarde et le fichier à transmettre au Data analyste.</p>
+    <div class="row">
+      <button class="btn" id="btnExport">Exporter le JSON</button>
+      <label class="btn ghost" style="flex-direction:row;color:var(--accent)">Importer un JSON<input type="file" id="fileJson" accept=".json,application/json" hidden></label>
+      <button class="btn danger" id="btnReset">Tout effacer</button>
+    </div>
+    <div class="msg" id="msgJson"></div>
+  </div>
+</section>
+</main>
+
+<!-- Dialogue séance -->
+<dialog id="dlg">
+  <form method="dialog" id="fSession">
+    <h2 style="margin-top:0" id="dlgTitle">Séance</h2>
+    <div class="grid">
+      <label>Date<input type="date" name="date" required></label>
+      <label>Sport<select name="sport"></select></label>
+      <label style="grid-column:span 2">Titre<input name="title"></label>
+      <label>Distance (km)<input type="number" step="0.01" name="distanceKm"></label>
+      <label>Durée (h:mm:ss)<input name="duree" placeholder="1:15:00"></label>
+      <label>D+ (m)<input type="number" name="dPlus"></label>
+      <label>D- (m)<input type="number" name="dMinus"></label>
+      <label>FC moy<input type="number" name="fcMoy"></label>
+      <label>FC max<input type="number" name="fcMax"></label>
+      <label>Ressenti (RPE 1-10)<input type="number" min="1" max="10" name="rpe"></label>
+      <label>Fatigue (1-5)<input type="number" min="1" max="5" name="fatigue"></label>
+    </div>
+    <label style="margin-top:12px">Douleurs<input name="douleurs" placeholder="ex. ischio gauche 3/10"></label>
+    <label style="margin-top:12px">Notes<textarea name="notes"></textarea></label>
+    <div class="row" style="justify-content:space-between;margin-top:16px">
+      <button type="button" class="btn danger" id="btnDel">Supprimer</button>
+      <div class="row"><button value="cancel" class="btn ghost" formnovalidate>Annuler</button><button class="btn" value="ok">Enregistrer</button></div>
+    </div>
+  </form>
+</dialog>
+
+<script>
+/* ===== Modèle de données ===== */
+const KEY='captrail_v1';
+const SPORTS={trail:'Trail',route:'Course route',renfo:'Renfo / muscu',velo:'Vélo',ski:'Ski / rando',marche:'Marche',autre:'Autre'};
+const DEFAULT={
+  version:1,
+  profile:{fcMax:188,fcRepos:50,vma:17.5,vamCourable:1100,vamRaide:1000,poids:71.8,poidsForme:69,ftp:205,
+    zones:[{n:'Z1',min:0,max:70},{n:'Z2',min:70,max:80},{n:'Z3',min:80,max:87},{n:'Z4',min:87,max:93},{n:'Z5',min:93,max:101}],
+    sportMap:{}},
+  sessions:[], workouts:[], races:[], plan:[]
+};
+let DB=load();
+function load(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.version)return merge(d)}catch(e){}return structuredClone(DEFAULT)}
+function merge(d){const b=structuredClone(DEFAULT);Object.assign(b,d);b.profile=Object.assign(structuredClone(DEFAULT.profile),d.profile||{});return b}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){alert('Sauvegarde impossible dans le navigateur : '+e.message)}}
+
+/* ===== Utilitaires ===== */
+const $=s=>document.querySelector(s);
+const fmtDur=s=>{if(!s&&s!==0)return'';s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return h+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')};
+const parseDur=t=>{if(!t)return null;const p=String(t).split(':').map(Number);if(p.some(isNaN))return null;return p.reduce((a,v)=>a*60+v,0)};
+const n=v=>{if(v===''||v==null)return null;const x=Number(String(v).replace(',','.'));return isFinite(x)?x:null};
+const fmt=(v,d=0)=>v==null?'':v.toLocaleString('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d});
+const uid=()=>Math.random().toString(36).slice(2,10);
+const isoDate=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function weekStart(dateStr){const d=new Date(dateStr+'T12:00:00');const w=(d.getDay()+6)%7;d.setDate(d.getDate()-w);return isoDate(d)}
+function zoneOf(fc){const p=DB.profile;if(!fc||!p.fcMax)return null;const pct=fc/p.fcMax*100;const i=p.zones.findIndex(z=>pct>=z.min&&pct<z.max);return i<0?(pct>=100?4:0):i}
+const isRun=s=>s.sport==='trail'||s.sport==='route';
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function flash(id,txt,err){const m=$(id);m.textContent=txt;m.className='msg'+(err?' err':'');m.style.display='block'}
+
+/* ===== Onglets ===== */
+$('#tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('main>section').forEach(s=>s.classList.toggle('on',s.id===b.dataset.t));
+  render()};
+
+/* ===== Journal ===== */
+function render(){renderKpis();renderJournal();renderWeeks();renderProfile()}
+function renderKpis(){
+  const now=new Date(),d28=new Date(now-28*864e5),d7=new Date(now-7*864e5);
+  const runs=DB.sessions.filter(isRun);
+  const sum=(arr,k)=>arr.reduce((a,s)=>a+(s[k]||0),0);
+  const r7=runs.filter(s=>new Date(s.date)>=d7),r28=runs.filter(s=>new Date(s.date)>=d28);
+  const renfo28=DB.sessions.filter(s=>s.sport==='renfo'&&new Date(s.date)>=d28).length;
+  const k=[
+    [fmt(sum(r7,'distanceKm'),1)+' km','Course 7 derniers jours'],
+    [fmt(sum(r7,'dPlus'))+' m','D+ 7 derniers jours'],
+    [fmt(sum(r28,'distanceKm')/4,1)+' km','Moyenne / sem. sur 28 j'],
+    [String(renfo28),'Séances renfo sur 28 j'],
+    [String(DB.sessions.length),'Séances enregistrées']];
+  $('#kpis').innerHTML=k.map(([b,s])=>`<div class="kpi"><b>${b}</b><span>${s}</span></div>`).join('');
+}
+function renderJournal(){
+  const f=$('#fSport');const cur=f.value;
+  f.innerHTML='<option value="">Tous sports</option>'+Object.entries(SPORTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');f.value=cur;
+  const list=DB.sessions.filter(s=>!cur||s.sport===cur).sort((a,b)=>b.date.localeCompare(a.date));
+  $('#emptyJ').style.display=DB.sessions.length?'none':'block';
+  const zc=['var(--z1)','var(--z2)','var(--z3)','var(--z4)','var(--z5)'];
+  $('#tSessions').innerHTML=list.length?`<tr><th>Date</th><th>Sport</th><th>Titre</th><th class="num">km</th><th class="num">Durée</th><th class="num">D+</th><th class="num">FC moy</th><th>Zone</th><th>Suivi</th></tr>`+
+    list.slice(0,300).map(s=>{const z=zoneOf(s.fcMoy);return `<tr data-id="${s.id}" style="cursor:pointer">
+    <td>${new Date(s.date+'T12:00').toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit',year:'2-digit'})}</td>
+    <td>${SPORTS[s.sport]||esc(s.sport)}</td><td>${esc(s.title)}</td>
+    <td class="num">${fmt(s.distanceKm,1)}</td><td class="num">${fmtDur(s.durationS)}</td><td class="num">${fmt(s.dPlus)}</td>
+    <td class="num">${s.fcMoy??''}</td><td>${z==null?'':`<span class="tag" style="background:${zc[z]};color:#111">${DB.profile.zones[z].n}</span>`}</td>
+    <td>${s.rpe?'RPE '+s.rpe+' ':''}${s.douleurs?'<span class="tag warn">douleur</span>':''}</td></tr>`}).join(''):'';
+}
+$('#fSport').onchange=renderJournal;
+$('#tSessions').onclick=e=>{const tr=e.target.closest('tr[data-id]');if(tr)openSession(tr.dataset.id)};
+
+/* ===== Semaines ===== */
+function renderWeeks(){
+  const m={};
+  for(const s of DB.sessions){const w=weekStart(s.date);const o=m[w]||(m[w]={km:0,dp:0,t:0,n:0,renfo:0,z:[0,0,0,0,0]});
+    if(isRun(s)){o.km+=s.distanceKm||0;o.dp+=s.dPlus||0;o.t+=s.durationS||0;o.n++;const z=zoneOf(s.fcMoy);if(z!=null)o.z[z]+=s.durationS||0}
+    if(s.sport==='renfo')o.renfo++}
+  const weeks=Object.keys(m).sort().reverse().slice(0,26);
+  if(!weeks.length){$('#tWeeks').innerHTML='<tr><td class="muted">Pas encore de données.</td></tr>';return}
+  const zc=['var(--z1)','var(--z2)','var(--z3)','var(--z4)','var(--z5)'];
+  $('#tWeeks').innerHTML=`<tr><th>Semaine du</th><th class="num">Séances</th><th class="num">km</th><th class="num">D+</th><th class="num">Durée</th><th>Répartition FC</th><th class="num">Renfo</th></tr>`+
+   weeks.map(w=>{const o=m[w],tz=o.z.reduce((a,b)=>a+b,0)||1;
+    return `<tr><td>${new Date(w+'T12:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'2-digit'})}</td>
+    <td class="num">${o.n}</td><td class="num">${fmt(o.km,1)}</td><td class="num">${fmt(o.dp)}</td><td class="num">${fmtDur(o.t)}</td>
+    <td><div class="zbar">${o.z.map((v,i)=>v?`<div style="width:${v/tz*100}%;background:${zc[i]}"></div>`:'').join('')}</div></td>
+    <td class="num">${o.renfo}</td></tr>`}).join('');
+}
+
+/* ===== Profil ===== */
+const PF=[['fcMax','FC max (bpm)'],['fcRepos','FC repos (bpm)'],['vma','VMA (km/h)'],['vamCourable','VAM terrain courable (m/h)'],['vamRaide','VAM terrain raide (m/h)'],['poids','Poids actuel (kg)'],['poidsForme','Poids de forme (kg)'],['ftp','FTP (W)']];
+function renderProfile(){
+  const p=DB.profile;
+  $('#profFields').innerHTML=PF.map(([k,l])=>`<label>${l}<input type="number" step="any" data-k="${k}" value="${p[k]??''}"></label>`).join('');
+  $('#tZones').innerHTML='<tr><th>Zone</th><th class="num">Min %</th><th class="num">Max %</th><th class="num">FC</th></tr>'+
+   p.zones.map((z,i)=>`<tr><td>${z.n}</td><td class="num"><input type="number" style="width:70px" data-z="${i}" data-f="min" value="${z.min}"></td>
+   <td class="num"><input type="number" style="width:70px" data-z="${i}" data-f="max" value="${z.max}"></td>
+   <td class="num">${Math.round(p.fcMax*z.min/100)} – ${Math.min(p.fcMax,Math.round(p.fcMax*z.max/100))}</td></tr>`).join('');
+  const ids=Object.keys(p.sportMap).sort((a,b)=>a-b);
+  $('#tSports').innerHTML=ids.length?'<tr><th>Id Runalyze</th><th>Exemple</th><th>Type</th></tr>'+ids.map(id=>{
+    const ex=DB.sessions.find(s=>String(s.sportid)===id);
+    return `<tr><td>${id}</td><td class="muted">${esc(ex?.title||'')}</td><td><select data-sid="${id}">${Object.entries(SPORTS).map(([k,v])=>`<option value="${k}" ${p.sportMap[id]===k?'selected':''}>${v}</option>`).join('')}</select></td></tr>`}).join('')
+   :'<tr><td class="muted">Les identifiants apparaîtront après un import Runalyze.</td></tr>';
+}
+$('#btnSaveProf').onclick=()=>{
+  const p=DB.profile;
+  document.querySelectorAll('#profFields input').forEach(i=>p[i.dataset.k]=n(i.value));
+  document.querySelectorAll('#tZones input').forEach(i=>p.zones[i.dataset.z][i.dataset.f]=n(i.value));
+  document.querySelectorAll('#tSports select').forEach(s=>p.sportMap[s.dataset.sid]=s.value);
+  DB.sessions.forEach(s=>{if(s.source==='runalyze'&&s.sportid!=null&&p.sportMap[s.sportid])s.sport=p.sportMap[s.sportid]});
+  save();render();flash('#msgProf','Profil enregistré.');
+};
+
+/* ===== Saisie séance ===== */
+let editId=null;
+function openSession(id){
+  editId=id;const s=DB.sessions.find(x=>x.id===id)||{date:isoDate(new Date()),sport:'trail'};
+  const f=$('#fSession');
+  f.sport.innerHTML=Object.entries(SPORTS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  for(const k of ['date','sport','title','distanceKm','dPlus','dMinus','fcMoy','fcMax','rpe','fatigue','douleurs','notes'])f[k].value=s[k]??'';
+  f.duree.value=fmtDur(s.durationS);
+  $('#btnDel').style.visibility=id?'visible':'hidden';
+  $('#dlgTitle').textContent=id?'Modifier la séance':'Nouvelle séance';
+  $('#dlg').showModal();
+}
+$('#btnAdd').onclick=()=>openSession(null);
+$('#dlg').addEventListener('close',()=>{
+  if($('#dlg').returnValue!=='ok')return;
+  const f=$('#fSession');
+  let s=DB.sessions.find(x=>x.id===editId);
+  if(!s){s={id:uid(),source:'manuel'};DB.sessions.push(s)}
+  Object.assign(s,{date:f.date.value,sport:f.sport.value,title:f.title.value,distanceKm:n(f.distanceKm.value),durationS:parseDur(f.duree.value),
+    dPlus:n(f.dPlus.value),dMinus:n(f.dMinus.value),fcMoy:n(f.fcMoy.value),fcMax:n(f.fcMax.value),rpe:n(f.rpe.value),fatigue:n(f.fatigue.value),
+    douleurs:f.douleurs.value.trim(),notes:f.notes.value.trim()});
+  save();render();
+});
+$('#btnDel').onclick=()=>{if(!editId||!confirm('Supprimer cette séance ?'))return;DB.sessions=DB.sessions.filter(s=>s.id!==editId);save();$('#dlg').close();render()};
+
+/* ===== Import CSV Runalyze ===== */
+function parseCsv(txt){
+  txt=txt.replace(/^\uFEFF/,'');
+  const first=txt.split(/\r?\n/)[0];
+  const sep=(first.match(/;/g)||[]).length>(first.match(/,/g)||[]).length?';':',';
+  const rows=[];let row=[],cell='',q=false;
+  for(let i=0;i<txt.length;i++){const c=txt[i];
+    if(q){if(c==='"'){if(txt[i+1]==='"'){cell+='"';i++}else q=false}else cell+=c}
+    else if(c==='"')q=true;else if(c===sep){row.push(cell);cell=''}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&txt[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell=''}
+    else cell+=c}
+  if(cell||row.length){row.push(cell);rows.push(row)}
+  return rows.filter(r=>r.some(x=>x.trim()!==''));
+}
+function parseTime(v){
+  if(v==null||v==='')return null;
+  const x=Number(v);
+  if(isFinite(x)&&x>1e8)return new Date(x>1e11?x:x*1000);
+  const d=new Date(String(v).replace(' ','T'));return isNaN(d)?null:d;
+}
+function guessSport(title){const t=(title||'').toLowerCase();
+  if(/renfo|muscu|gainage|pps|force/.test(t))return'renfo';
+  if(/v[ée]lo|bike|vtt|cycl/.test(t))return'velo';
+  if(/ski|rando/.test(t))return'ski';
+  if(/trail|montagne|d\+|côte|cote/.test(t))return'trail';
+  return null}
+$('#fileCsv').onchange=async e=>{
+  const file=e.target.files[0];if(!file)return;
+  try{
+    const rows=parseCsv(await file.text());
+    const h=rows.shift().map(x=>x.trim());
+    const ix=k=>h.indexOf(k);
+    for(const k of ['distance','s','time'])if(ix(k)<0)throw new Error('colonne « '+k+' » absente');
+    const keys=new Set(DB.sessions.map(s=>s.extKey).filter(Boolean));
+    let add=0,dup=0,bad=0;
+    for(const r of rows){
+      const g=k=>ix(k)<0?null:r[ix(k)];
+      const d=parseTime(g('time'));if(!d){bad++;continue}
+      const dist=n(g('distance')),dur=n(g('s'));
+      const extKey=d.getTime()+'|'+(dist??'')+'|'+(dur??'');
+      if(keys.has(extKey)){dup++;continue}
+      const sid=g('sportid');const title=g('title')||'';
+      if(sid!=null&&sid!==''&&!(sid in DB.profile.sportMap))DB.profile.sportMap[sid]=guessSport(title)||'trail';
+      const hilly=n(g('percentageHilly'));
+      let sport=DB.profile.sportMap[sid]||'autre';
+      DB.sessions.push({id:uid(),source:'runalyze',extKey,date:isoDate(d),heure:d.toTimeString().slice(0,5),sport,sportid:sid,title,
+        distanceKm:dist,durationS:dur,dPlus:n(g('elevationUp')),dMinus:n(g('elevationDown')),vo2max:n(g('vo2max')),
+        fcMoy:n(g('pulseAvg')),fcMax:n(g('pulseMax')),pctVallonne:hilly==null?null:(hilly<=1?hilly*100:hilly),
+        rpe:null,fatigue:null,douleurs:'',notes:''});
+      keys.add(extKey);add++;
+    }
+    save();render();
+    flash('#msgCsv',`${add} séance(s) importée(s), ${dup} doublon(s) ignoré(s)${bad?', '+bad+' ligne(s) sans date valide':''}. Vérifie la correspondance des sports dans l'onglet Profil.`);
+  }catch(err){flash('#msgCsv','Import impossible : '+err.message,true)}
+  e.target.value='';
+};
+
+/* ===== JSON ===== */
+$('#btnExport').onclick=()=>{
+  const blob=new Blob([JSON.stringify({...DB,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='captrail_'+isoDate(new Date())+'.json';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+$('#fileJson').onchange=async e=>{
+  const file=e.target.files[0];if(!file)return;
+  try{const d=JSON.parse(await file.text());if(!d.version||!Array.isArray(d.sessions))throw new Error('format non reconnu');
+    if(!confirm('Remplacer les données actuelles par ce fichier ('+d.sessions.length+' séances) ?'))return;
+    DB=merge(d);save();render();flash('#msgJson','Données restaurées : '+d.sessions.length+' séances.')}
+  catch(err){flash('#msgJson','Import impossible : '+err.message,true)}
+  e.target.value='';
+};
+$('#btnReset').onclick=()=>{if(confirm('Effacer toutes les données de ce navigateur ? Pense à exporter le JSON avant.')){DB=structuredClone(DEFAULT);save();render()}};
+
+render();
+</script>
+</body>
+</html>
