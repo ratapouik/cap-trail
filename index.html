@@ -1295,7 +1295,8 @@ function rzSummary(s){
   p('Récup. Garmin',r.recupH,' h');p('Découplage',r.decouplage!=null?fmt(r.decouplage,1):null,' %');p('Climb score',r.climb);
   p('Puissance',r.power,' W');p('NP',r.np,' W');p('Cadence',r.cadence,' pas/min');p('Foulée',r.foulee!=null?fmt(r.foulee/100,2):null,' m');
   p('Contact sol',r.contact,' ms');p('Oscill.',r.oscill!=null?fmt(r.oscill,1):null,' cm');p('Récup. FC 1 min',r.hrRecovery,' bpm');
-  p('RPE Runalyze (Borg 6-20)',r.rpe);p('Météo',r.temp!=null?r.temp+' °C'+(r.hum!=null?', '+r.hum+' %':'')+(r.vent!=null?', vent '+r.vent+' km/h':''):null);
+  p('RPE Runalyze (Borg 6-20)',r.rpe);
+  if(s.rpe&&s.durationS)p('Charge ressentie (RPE × min)',Math.round(s.rpe*s.durationS/60));p('Météo',r.temp!=null?r.temp+' °C'+(r.hum!=null?', '+r.hum+' %':'')+(r.vent!=null?', vent '+r.vent+' km/h':''):null);
   return it.length?'Runalyze : '+it.join(' · '):'';
 }
 $('#btnRza').onclick=()=>rzaSync(false);
@@ -1344,6 +1345,21 @@ $('#fileBio').onchange=async e=>{
    ===================================================================== */
 
 /* --- Score de forme (0-100) à partir de la charge et de la biométrie --- */
+/* RPE attendu d'après l'intensité cardiaque (FC de réserve) et la durée ; l'écart mesure la fatigue ressentie,
+   le RPE restant le ressenti global de l'effort et de la fatigue en fin de séance, pas une mesure d'efficacité. */
+function rpeExpected(s){
+  if(!s.fcMoy||!s.durationS)return null;
+  const h=hrrOf(s.fcMoy,s.date),hrs=s.durationS/3600;
+  return Math.max(1,Math.min(10,2+(h-0.5)*15+(hrs>1?Math.min(2,(hrs-1)*0.7):0)));
+}
+function rpeState(){
+  const lim=addDays(today0(),-7);
+  const L=DB.sessions.filter(s=>s.rpe!=null&&s.fcMoy&&parseD(s.date)>lim&&(isRun(s)||s.sport==='velo'||s.sport==='marche'))
+    .sort((a,b)=>(b.date+(b.heure||'')).localeCompare(a.date+(a.heure||''))).slice(0,3);
+  if(!L.length)return null;
+  const r=L.reduce((a,s)=>a+s.rpe,0)/L.length,e=L.reduce((a,s)=>a+rpeExpected(s),0)/L.length;
+  return{n:L.length,rpe:fmt(r,1),exp:fmt(e,1),gap:r-e};
+}
 function readiness(){
   const pm=pmc(),last=pm[pm.length-1]||{tsb:0,acwr:null},F=[];let s=100;
   const pen=(v,label,detail)=>{s-=v;F.push({v,label,detail})};
@@ -1375,6 +1391,12 @@ function readiness(){
     if(d>=8)pen(20,'FC repos',`${lf.fcRepos} bpm (+${Math.round(d)} vs ${Math.round(base)})`);
     else if(d>=5)pen(10,'FC repos',`${lf.fcRepos} bpm (+${Math.round(d)} vs ${Math.round(base)})`);
     else ok('FC repos',`${lf.fcRepos} bpm (réf. ${Math.round(base)})`)}
+  // ressenti (RPE = effort global perçu en fin de séance) comparé à ce que la FC laissait attendre
+  const rs=rpeState();
+  if(rs){
+    if(rs.gap>=3)pen(15,'Ressenti',`séances récentes ressenties bien plus dures que la FC ne l'indique (RPE ${rs.rpe} pour ~${rs.exp} attendu) : fatigue de fond probable`);
+    else if(rs.gap>=2)pen(8,'Ressenti',`séances récentes ressenties plus dures que la FC ne l'indique (RPE ${rs.rpe} pour ~${rs.exp} attendu)`);
+    else ok('Ressenti',`RPE ${rs.rpe} en moyenne, cohérent avec l'intensité cardiaque`)}
   // douleur signalée sur les 3 derniers jours
   const pain=DB.sessions.find(x=>x.douleurs&&parseD(x.date)>addDays(today0(),-3));
   if(pain)pen(15,'Douleur',`signalée le ${pain.date} : ${pain.douleurs}`);
