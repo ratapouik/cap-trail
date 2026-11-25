@@ -109,7 +109,7 @@ svg.chart text{fill:var(--muted);font-size:11px;font-family:inherit}
       <label>Type de séance<select id="gType">
         <option value="trail">Trail (extérieur)</option><option value="route">Course sur route / piste</option>
         <option value="tapis">Salle — tapis de course</option><option value="elliptique">Salle — elliptique</option>
-        <option value="velo">Salle — vélo</option><option value="circuit">Salle — circuit (cardio + renfo)</option><option value="renfo">Renforcement</option></select></label>
+        <option value="velo">Salle — vélo</option><option value="circuit">Salle — circuit (cardio + renfo)</option><option value="hiit">Maison — cardio HIIT (poids du corps + corde)</option><option value="renfo">Renforcement</option></select></label>
       <label>Intensité<select id="gInt">
         <option value="recup">Récupération</option><option value="ef" selected>Endurance fondamentale</option>
         <option value="seuil">Seuil</option><option value="puissance">Puissance</option><option value="fractionne">Fractionné</option></select></label>
@@ -1593,10 +1593,10 @@ const EX=[
  {n:'Superman',c:['tronc','post'],eq:'pdc',cue:'Sur le ventre, décolle bras et jambes 2 s, regard au sol.',e:'15',f:'12, pause 3 s'},
  // pliométrie
  {n:'Sauts sur box',c:['plyo'],eq:'pdc',cue:'Saut à deux pieds sur une marche ou un box, réception silencieuse et stable, redescends en marchant.',e:'6',f:'5, box plus haut'},
- {n:'Fentes sautées',c:['plyo'],eq:'pdc',cue:'Changement de jambe en l\'air, réception douce genou dans l\'axe.',e:'8/jambe',f:'10/jambe'},
+ {n:'Fentes sautées',c:['plyo','hiitExplo'],eq:'pdc',cue:'Changement de jambe en l\'air, réception douce genou dans l\'axe.',e:'8/jambe',f:'10/jambe'},
  {n:'Skater latéral',c:['plyo','cheville'],eq:'pdc',cue:'Saut latéral d\'une jambe sur l\'autre, réception tenue 1 s. Stabilité en dévers.',e:'8/côté',f:'10/côté, réception plus loin'},
  {n:'Bondissements alternés',c:['plyo'],eq:'pdc',cue:'Foulées bondissantes, genou haut, poussée de cheville, en légère montée si possible.',e:'20 m × 4',f:'30 m × 5'},
- {n:'Squat sauté',c:['plyo'],eq:'pdc',cue:'Demi-squat puis saut vertical, réception amortie et enchaînée.',e:'10',f:'8, lesté léger'},
+ {n:'Squat sauté',c:['plyo','hiitExplo'],eq:'pdc',cue:'Demi-squat puis saut vertical, réception amortie et enchaînée.',e:'10',f:'8, lesté léger'},
  {n:'Corde à sauter',c:['plyo','cardio','mollet'],eq:'pdc',cue:'Sauts légers sur l\'avant-pied, rythme régulier.',e:'45 s',f:'30 s rapide'},
  {n:'Drop jump',c:['plyo','excentrique'],eq:'pdc',cue:'Laisse-toi tomber d\'une marche de 30 cm, rebondis immédiatement le plus haut possible. Réservé aux pratiquants réguliers.',e:'5',f:'6'},
  // mobilité
@@ -1613,8 +1613,39 @@ const EX=[
  {n:'SkiErg',c:['cardio','machine'],eq:'salle',cue:'Tirage bras tendus avec flexion de hanches, comme en ski de fond : utile pour les bâtons.',e:'',f:''},
  {n:'Tapis incliné en marche rapide',c:['cardio','machine'],eq:'salle',cue:'Pente 12-15 %, sans tenir les barres : simulation de montée raide.',e:'',f:''},
  {n:'Wall ball',c:['cardio','jambes'],eq:'salle',cue:'Squat puis lancer du médecine-ball contre une cible à 3 m, rattrape et enchaîne.',e:'15',f:'10'},
- {n:'Burpees',c:['cardio','plyo'],eq:'pdc',cue:'Planche, pompe, retour pieds sous les mains, saut. Régulier plutôt que rapide.',e:'10',f:'8'},
+ {n:'Burpees',c:['cardio','plyo','hiitSol','hiitExplo'],eq:'pdc',cue:'Planche, pompe, retour pieds sous les mains, saut. Régulier plutôt que rapide.',e:'10',f:'8'},
  {n:'Battle rope',c:['cardio','tronc'],eq:'salle',cue:'Ondulations alternées, gainage serré, genoux fléchis.',e:'30 s',f:'20 s'},
+ // cardio HIIT à la maison : poids du corps + corde à sauter
+ // doux = sans impact (récup), cardio = continu modéré, sol = au sol / gainage dynamique, explo = sauts explosifs, corde = corde à sauter
+ {n:'Corde — pieds joints',c:['corde','hiitCardio'],eq:'pdc',cue:'Petits sauts sur l\'avant-pied, 2-3 cm du sol, poignets qui tournent (pas les bras), regard devant.',e:'45 s',f:'30 s rapide'},
+ {n:'Corde — course sur place',c:['corde','hiitCardio'],eq:'pdc',cue:'Alterne les pieds comme en courant, foulée légère et rythme régulier. Le plus proche de la course.',e:'45 s',f:'30 s rapide'},
+ {n:'Corde — montées de genoux',c:['corde','hiitExplo'],eq:'pdc',cue:'Course sur place genoux à hauteur de hanches, buste droit, cadence élevée.',e:'30 s',f:'20 s à fond'},
+ {n:'Corde — boxer step',c:['corde','hiitDoux','hiitCardio'],eq:'pdc',cue:'Transfert du poids d\'un pied sur l\'autre à chaque tour, très économique : idéal pour récupérer sans arrêter la corde.',e:'60 s',f:'45 s'},
+ {n:'Corde — sauts latéraux',c:['corde','hiitCardio'],eq:'pdc',cue:'Pieds joints, petits sauts gauche-droite d\'une vingtaine de cm. Travaille la cheville en latéral comme en dévers.',e:'40 s',f:'30 s'},
+ {n:'Corde — double unders',c:['corde','hiitExplo'],eq:'pdc',cue:'Saut un peu plus haut, deux passages de corde par saut. Si pas maîtrisé : 3 sauts simples + 1 tentative.',e:'20 s',f:'30 s'},
+ {n:'Jumping jacks',c:['hiitCardio'],eq:'pdc',cue:'Écarte bras et jambes en sautant, réception sur l\'avant-pied, rythme soutenu et régulier.',e:'45 s',f:'30 s rapide'},
+ {n:'Jumping jacks sans saut',c:['hiitDoux'],eq:'pdc',cue:'Une jambe sur le côté puis l\'autre, bras au-dessus de la tête. Version sans impact.',e:'45 s',f:'45 s'},
+ {n:'Montées de genoux',c:['hiitCardio','hiitExplo'],eq:'pdc',cue:'Course sur place genoux hauts, bras actifs, appuis brefs sur l\'avant-pied.',e:'30 s',f:'20 s à fond'},
+ {n:'Talons-fesses',c:['hiitCardio'],eq:'pdc',cue:'Course sur place, talons qui viennent toucher les fessiers, cadence rapide.',e:'40 s',f:'30 s'},
+ {n:'Marche genoux hauts',c:['hiitDoux'],eq:'pdc',cue:'Marche sur place en montant les genoux à hauteur de hanches, bras opposés, sans saut.',e:'60 s',f:'60 s'},
+ {n:'Squat au poids du corps',c:['hiitCardio','hiitDoux','jambes'],eq:'pdc',cue:'Pieds largeur d\'épaules, cuisses à l\'horizontale, talons au sol, remonte dynamique en expirant.',e:'20',f:'30 s à fond'},
+ {n:'Fentes alternées dynamiques',c:['hiitCardio','jambes'],eq:'pdc',cue:'Fente avant, retour pied joint, autre jambe ; rythme continu, genou avant dans l\'axe.',e:'40 s',f:'30 s'},
+ {n:'Mountain climbers',c:['hiitSol','hiitCardio'],eq:'pdc',cue:'En planche bras tendus, ramène les genoux vers la poitrine en alternance, bassin bas et stable.',e:'40 s',f:'30 s rapide'},
+ {n:'Mountain climbers lents',c:['hiitDoux'],eq:'pdc',cue:'En planche, ramène un genou vers le coude opposé en 2 s, sans saut. Gainage et mobilité de hanche.',e:'45 s',f:'45 s'},
+ {n:'Planche jacks',c:['hiitSol'],eq:'pdc',cue:'En planche bras tendus, écarte et resserre les pieds en sautant, sans que les hanches montent.',e:'30 s',f:'40 s'},
+ {n:'Burpee sans pompe',c:['hiitSol','hiitCardio'],eq:'pdc',cue:'Mains au sol, saute en planche, reviens pieds sous les mains, petit saut. Version plus accessible du burpee.',e:'30 s',f:'40 s'},
+ {n:'Sprawl',c:['hiitSol','hiitExplo'],eq:'pdc',cue:'Comme un burpee mais en descendant les hanches au sol, puis retour debout sans saut final. Très cardio.',e:'30 s',f:'20 s à fond'},
+ {n:'Squat thrust',c:['hiitSol'],eq:'pdc',cue:'Accroupi mains au sol, lance les pieds en planche et ramène-les, rythme régulier.',e:'30 s',f:'40 s'},
+ {n:'Pompes',c:['hiitSol','tronc'],eq:'pdc',cue:'Corps gainé, poitrine près du sol, coudes à 45°. Sur les genoux si besoin pour garder une belle exécution.',e:'12',f:'30 s max'},
+ {n:'Marche de l\'ours',c:['hiitSol','tronc'],eq:'pdc',cue:'À quatre pattes, genoux à 3 cm du sol : avance et recule en bras et jambe opposés, dos plat.',e:'30 s',f:'40 s'},
+ {n:'Inchworm',c:['hiitDoux','mobilite'],eq:'pdc',cue:'Debout, mains au sol jambes tendues, avance en marchant sur les mains jusqu\'à la planche, reviens.',e:'6',f:'8'},
+ {n:'Squat sauté 180°',c:['hiitExplo','plyo'],eq:'pdc',cue:'Squat puis saut avec demi-tour, réception amortie en squat face à l\'autre côté.',e:'20 s',f:'30 s'},
+ {n:'Tuck jumps',c:['hiitExplo','plyo'],eq:'pdc',cue:'Saut vertical en ramenant les genoux vers la poitrine, réception souple et immédiatement relancée.',e:'20 s',f:'8 sauts max'},
+ {n:'Sauts en longueur enchaînés',c:['hiitExplo','plyo'],eq:'pdc',cue:'Saut pieds joints vers l\'avant, réception stable, demi-tour en marchant, repars. Explosivité de hanche.',e:'6',f:'8'},
+ {n:'Speed skaters',c:['hiitExplo','hiitCardio'],eq:'pdc',cue:'Bonds latéraux d\'une jambe sur l\'autre, pied libre croisé derrière, enchaînés sans tenir la réception.',e:'40 s',f:'30 s à fond'},
+ {n:'Shadow boxing',c:['hiitCardio','hiitDoux'],eq:'pdc',cue:'Directs et crochets dans le vide, appuis légers et sautillés, gainage serré.',e:'45 s',f:'30 s à fond'},
+ {n:'Pas chassés latéraux',c:['hiitCardio'],eq:'pdc',cue:'Demi-squat, 3 pas chassés rapides d\'un côté, touche le sol, repars de l\'autre côté.',e:'40 s',f:'30 s'},
+ {n:'Montées de marche rapides',c:['hiitCardio','jambes'],eq:'pdc',cue:'Sur une marche d\'escalier : monte et descends en alternant le pied d\'attaque, rythme soutenu. Spécifique montée.',e:'60 s',f:'45 s'},
 ];
 const daySeed=()=>Math.floor(Date.now()/DAY);
 // choisit des exercices variés : un par catégorie demandée, selon le matériel et une rotation quotidienne
@@ -1685,6 +1716,60 @@ LIB.circuit={
     return{t:`HIIT 30/30 ${cardio.map(x=>x.n.split(' ')[0].toLowerCase()).join(' / ')} — ${tours} tours`,why:'Fractionné court sur machines et au poids du corps : 30 s à fond, 30 s de récupération.',steps:circuitSession(stations,tours,.5,.5,12,8)}})
 };
 
+/* --- Cardio HIIT à la maison : poids du corps + corde à sauter ---
+   Blocs successifs, chacun répété « tours » fois (boucle FIT), récupération entre blocs.
+   hrf = fraction de FC max estimée pour le calcul de charge quand la cible est libre (efforts trop courts pour viser une FC). */
+const HIIT_WARM='Corde souple ou marche genoux hauts 2 min, mobilité chevilles-hanches-épaules, 8 squats, 10 jumping jacks, 2 accélérations de 10 s';
+function hiitStation(x,dose,min,target,hrf){return{...st(x.n,min,'active',target||OPEN,[dose,x.cue].filter(Boolean).join(' · ')),hrf}}
+function hiitSession(blocks,warm=7,cool=5){
+  const o=[st('Échauffement',warm,'warmup',HR(.6,.72),HIIT_WARM)];
+  blocks.forEach((b,bi)=>{
+    const from=o.length;
+    b.stations.forEach(s=>{o.push(s);if(b.trans)o.push(st('Transition',b.trans,'rest',OPEN,b.transNote||''))});
+    if(b.roundRest)o.push(st('Récupération',b.roundRest,'rest',OPEN,'Marche, respiration ample'));
+    if(b.tours>1)o.push({loop:true,from,count:b.tours,name:b.loopName||'Refaire le bloc',kind:'rest',min:0});
+    if(b.after&&bi<blocks.length-1)o.push(st('Récupération entre blocs',b.after,'rest',OPEN,'Marche, boire une gorgée'));
+  });
+  o.push(st('Retour au calme',cool,'cooldown',HR(.5,.65),'Marche, puis étirements mollets, quadriceps, fléchisseurs de hanche'));
+  return o;
+}
+const PDC=['pdc'];
+const SOFT_LAND=' Réceptions souples sur l\'avant-pied, sur un tapis ou un sol amorti ; arrête-toi si la technique se dégrade ou si un tendon (Achille, rotulien) tire.';
+LIB.hiit={
+  recup:[c=>{const exs=pickEx(['hiitDoux','hiitDoux','hiitDoux','hiitDoux','hiitDoux'],PDC,1);const tours=clamp(Math.round(c/5),2,4);
+    return{t:`Cardio doux sans impact — ${tours} tours`,why:'Récupération active à la maison : enchaînement sans saut, 45 s / 15 s, en aisance respiratoire (Z1-Z2). Fait circuler sans fatiguer.',
+      steps:hiitSession([{stations:exs.map(x=>hiitStation(x,'45 s, tranquille',.75,HR(.6,.72))),trans:.25,tours}],5,5)}}],
+  ef:[
+    c=>{const exs=pickEx(['corde','hiitCardio','corde','hiitCardio','hiitSol'],PDC,0);
+      const st5=exs.map(x=>x.c.includes('corde')?hiitStation(x,'2 min régulier, Z2',2,HR(.70,.80)):hiitStation(x,'1 min régulier, Z2',1,HR(.70,.80)));
+      const per=st5.reduce((a,s)=>a+s.min,0)+st5.length*.25;const tours=clamp(Math.round(c/per),1,4);
+      return{t:`Cardio continu corde + poids du corps — ${tours} tour${tours>1?'s':''}`,why:'Endurance fondamentale sans sortir : la corde (2 min) alterne avec des mouvements au poids du corps (1 min), 15 s de transition. FC en Z2, tu dois pouvoir parler.'+SOFT_LAND,
+        steps:hiitSession([{stations:st5,trans:.25,tours}])}},
+    c=>{const exs=pickEx(['hiitCardio','hiitCardio','hiitSol','jambes','hiitCardio','hiitCardio'],PDC,3);
+      const per=exs.length*1.25;const tours=clamp(Math.round(c/per),2,5);
+      return{t:`Circuit aérobie au poids du corps — ${tours} tours`,why:'Version sans corde : 6 mouvements d\'1 min enchaînés, 15 s de transition, rythme constant en Z2. Le volume compte plus que la vitesse.'+SOFT_LAND,
+        steps:hiitSession([{stations:exs.map(x=>hiitStation(x,'1 min régulier, Z2',1,HR(.70,.80))),trans:.25,tours}])}}],
+  seuil:[0,1].map(v=>c=>{
+    const exs=pickEx(v?['hiitCardio','hiitSol','jambes','hiitCardio']:['corde','hiitCardio','hiitSol','corde'],PDC,v+4);
+    const tours=clamp(Math.round(c/5.5),3,5);
+    return{t:`Blocs seuil ${v?'sans corde':'corde + poids du corps'} — ${tours} × 4 min`,why:`${tours} blocs de 4 min sans pause (1 min par mouvement) au seuil : difficile mais tenable, phrases courtes. 1 min 30 de récupération entre les blocs.`+SOFT_LAND,
+      steps:hiitSession([{stations:exs.map(x=>hiitStation(x,'1 min soutenu, seuil',1,HR(.84,.89),.86)),roundRest:1.5,tours,loopName:'Refaire le bloc de 4 min'}],8,6)}}),
+  puissance:[0,1].map(v=>c=>{
+    const exs=pickEx(v?['corde','hiitExplo','hiitExplo','corde','hiitExplo']:['hiitExplo','hiitExplo','hiitExplo','hiitExplo','hiitSol'],PDC,v+6);
+    const tours=clamp(Math.round(c/6),2,4);
+    return{t:`Explosivité ${v?'corde + sauts':'au poids du corps'} — ${tours} tours`,why:'20 s à intensité maximale, 40 s de récupération complète : qualité et hauteur des sauts avant tout. 1 min 30 de pause entre les tours.'+SOFT_LAND,
+      steps:hiitSession([{stations:exs.map(x=>hiitStation(x,'20 s explosif',1/3,OPEN,.9)),trans:2/3,transNote:'Récupération complète, marche',roundRest:1.5,tours}],10,6)}}),
+  fractionne:[
+    c=>{const nb=clamp(Math.round(c/5),2,4);const exs=pickEx(['corde','hiitSol','hiitExplo','hiitCardio','corde','hiitSol','hiitExplo','hiitCardio'],PDC,2);
+      const blocks=[];for(let b=0;b<nb;b++){const a=exs[(2*b)%exs.length],d=exs[(2*b+1)%exs.length];
+        blocks.push({stations:[hiitStation(a,'20 s à fond',1/3,OPEN,.92),st('Pause',1/6,'rest'),hiitStation(d,'20 s à fond',1/3,OPEN,.92),st('Pause',1/6,'rest')],tours:4,after:1,loopName:'Tabata : 4 × (20 s / 10 s) par exercice'})}
+      return{t:`Tabata maison — ${nb} blocs de 4 min`,why:`${nb} Tabata de 8 × 20 s à fond / 10 s, deux exercices en alternance, 1 min entre les blocs. Court et très intense : à placer sur une journée fraîche, jamais la veille d'une sortie longue.`+SOFT_LAND,
+        steps:hiitSession(blocks,10,6)}},
+    c=>{const exs=pickEx(['corde','hiitExplo','hiitSol','hiitCardio','corde','hiitSol'],PDC,5);const tours=clamp(Math.round(c/7),2,4);
+      return{t:`HIIT 30/30 corde et poids du corps — ${tours} tours`,why:'30 s vite / 30 s de récupération sur 6 mouvements, 1 min de pause entre les tours. Plus progressif que le Tabata, bon pour reprendre le fractionné.'+SOFT_LAND,
+        steps:hiitSession([{stations:exs.map(x=>hiitStation(x,'30 s vite',.5,OPEN,.9)),trans:.5,transNote:'Récupération, marche ou corde très souple',roundRest:1,tours}],10,6)}}]
+};
+
 /* --- Boucles de circuit : développement pour la durée, l'affichage et le FIT --- */
 function expandLoops(steps){
   const out=[];steps.forEach((s,i)=>{if(s.loop){const block=steps.slice(s.from,i);for(let k=1;k<s.count;k++)out.push(...block)}else out.push(s)});return out;
@@ -1719,7 +1804,7 @@ function applySuggestion(){
 
 /* --- Génération --- */
 const KIND_HR={warmup:.65,cooldown:.6,rest:.68};
-function stepHrFrac(s){const t=s.target||OPEN;
+function stepHrFrac(s){if(s.hrf)return s.hrf;const t=s.target||OPEN;
   if(t.type==='hr')return(t.lo+t.hi)/2/P().fcMax;
   if(t.type==='speed'){const f=(t.lo+t.hi)/2*3.6/(P().vma||15);return Math.min(.98,.25+.72*f)}
   if(t.type==='power'){const f=(t.lo+t.hi)/2/(P().ftp||200);return Math.min(.98,.42+.48*f)}
@@ -1733,7 +1818,7 @@ function buildSession(tpl,type,int,dur,factor){
   body=Math.round(body*factor);
   const s=tpl(body);const ex=expandLoops(s.steps);s.total=Math.round(ex.reduce((a,x)=>a+x.min,0));s.load=sessionLoad(ex);s.type=type;s.int=int;return s;
 }
-const TYPE_LBL={trail:'Trail',route:'Route',tapis:'Tapis',elliptique:'Elliptique',velo:'Vélo',circuit:'Circuit salle',renfo:'Renfo'};
+const TYPE_LBL={trail:'Trail',route:'Route',tapis:'Tapis',elliptique:'Elliptique',velo:'Vélo',circuit:'Circuit salle',hiit:'HIIT maison',renfo:'Renfo'};
 const INT_LBL={recup:'Récupération',ef:'Endurance fondamentale',seuil:'Seuil',puissance:'Puissance',fractionne:'Fractionné'};
 let GEN=[];
 function renderReadiness(){
@@ -1826,7 +1911,7 @@ function fitWorkout(name,sport,subSport,steps){
   const c=fitCrc(all.subarray(0,hb.length+data.length));all[all.length-2]=c&0xFF;all[all.length-1]=c>>8;
   return all;
 }
-const FIT_SPORT={trail:[1,3],route:[1,0],tapis:[1,1],elliptique:[4,15],velo:[2,6],circuit:[10,26],renfo:[10,20]};   // [sport, sous-sport]
+const FIT_SPORT={trail:[1,3],route:[1,0],tapis:[1,1],elliptique:[4,15],velo:[2,6],circuit:[10,26],hiit:[10,26],renfo:[10,20]};   // [sport, sous-sport]
 const asciiName=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[×]/g,'x').replace(/[—–]/g,'-').replace(/[^\x20-\x7E]/g,'');
 // regroupe « X 1/n, récup, X 2/n, récup… » en « X, récup, répéter n fois »
 function fitSteps(steps){
