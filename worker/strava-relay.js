@@ -19,8 +19,8 @@
 
 const DEFAULT_ORIGIN = 'https://ratapouik.github.io';
 const DEFAULT_OWNER = '27213731';
-// Lecture seule, chemins limités aux données de santé et statistiques
-const RUNALYZE_PATHS = /^\/(metrics\/(heartRateRest|hrv|sleep|bodyComposition|latest)|statistics\/(current|prognosis))$/;
+// Lecture seule, chemins limités aux données de santé, statistiques et activités (pas d'export de fichiers)
+const RUNALYZE_PATHS = /^\/(metrics\/(heartRateRest|hrv|sleep|bodyComposition|latest)|statistics\/(current|prognosis)|activity|activity\/\d+)$/;
 
 export default {
   async fetch(req, env) {
