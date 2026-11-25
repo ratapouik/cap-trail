@@ -1396,6 +1396,7 @@ function readiness(){
   if(rs){
     if(rs.gap>=3)pen(15,'Ressenti',`séances récentes ressenties bien plus dures que la FC ne l'indique (RPE ${rs.rpe} pour ~${rs.exp} attendu) : fatigue de fond probable`);
     else if(rs.gap>=2)pen(8,'Ressenti',`séances récentes ressenties plus dures que la FC ne l'indique (RPE ${rs.rpe} pour ~${rs.exp} attendu)`);
+    else if(rs.gap<=-2)ok('Ressenti',`séances ressenties plus faciles que la FC ne l'indique (RPE ${rs.rpe} pour ~${rs.exp} attendu) : bon signe`);
     else ok('Ressenti',`RPE ${rs.rpe} en moyenne, cohérent avec l'intensité cardiaque`)}
   // douleur signalée sur les 3 derniers jours
   const pain=DB.sessions.find(x=>x.douleurs&&parseD(x.date)>addDays(today0(),-3));
