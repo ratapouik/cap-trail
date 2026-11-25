@@ -1222,7 +1222,15 @@ function rzaSport(a){
   if(/hiit|muscu|strength|renfo|gainage/.test(nm+' '+t))return'renfo';
   return guessSport(a.title)||'autre';
 }
-const rzaRpe=r=>r==null?null:Math.max(1,Math.min(10,Math.round((r-6)/14*9+1)));   // Runalyze note le RPE sur l'échelle de Borg 6-20 → ramené sur 1-10
+/* RPE Runalyze : la montre demande une note sur 10, mais Runalyze stocke selon les cas la note brute (1-10) ou une valeur
+   sur l'échelle de Borg 6-20. Au-delà de 10 c'est forcément du Borg (converti sur 10) ; à 10 ou moins, on garde
+   l'interprétation la plus proche de ce que la FC et la durée laissent attendre. */
+const borg10=r=>Math.max(1,Math.min(10,Math.round((r-6)/14*9+1)));
+function rzaRpe(r,m){
+  if(r==null)return null;if(r>10)return borg10(r);if(r<6)return r;
+  const e=m?rpeExpected(m):null;if(e==null)return r;
+  return Math.abs(r-e)<=Math.abs(borg10(r)-e)?r:borg10(r);
+}
 function rzaMap(a){
   const loc=String(a.date_time||'');
   return{date:loc.slice(0,10),heure:loc.slice(11,16),title:a.title||'',distanceKm:a.distance??null,durationS:a.duration??null,elapsedS:a.elapsed_time??null,
@@ -1274,7 +1282,7 @@ async function rzaSync(full){
         DB.sessions.push(s);add++;
       }
       s.rz=m.rz;
-      if((s.rpe==null||s.rpeSrc==='runalyze')&&m.rz.rpe!=null){s.rpe=rzaRpe(m.rz.rpe);s.rpeSrc='runalyze';rpe++}
+      if((s.rpe==null||s.rpeSrc==='runalyze')&&m.rz.rpe!=null){s.rpe=rzaRpe(m.rz.rpe,{fcMoy:s.fcMoy??m.fcMoy,durationS:s.durationS??m.durationS,date:m.date});s.rpeSrc='runalyze';rpe++}
     }
     ST.rzaSync=new Date().toISOString();stSave();save();render();
     flash('#msgRza',`${all.length} activité(s) Runalyze lue(s) : ${enr} séance(s) existante(s) enrichie(s), ${add} ajoutée(s) (absentes de Strava), ${upd} mise(s) à jour${rpe?', '+rpe+' RPE repris':''}.`);
@@ -1295,7 +1303,7 @@ function rzSummary(s){
   p('Récup. Garmin',r.recupH,' h');p('Découplage',r.decouplage!=null?fmt(r.decouplage,1):null,' %');p('Climb score',r.climb);
   p('Puissance',r.power,' W');p('NP',r.np,' W');p('Cadence',r.cadence,' pas/min');p('Foulée',r.foulee!=null?fmt(r.foulee/100,2):null,' m');
   p('Contact sol',r.contact,' ms');p('Oscill.',r.oscill!=null?fmt(r.oscill,1):null,' cm');p('Récup. FC 1 min',r.hrRecovery,' bpm');
-  p('RPE Runalyze (Borg 6-20)',r.rpe);
+  p('RPE brut Runalyze',r.rpe!=null?r.rpe+(s.rpeSrc==='runalyze'&&s.rpe!==r.rpe?' (lu en Borg 6-20 → '+s.rpe+'/10)':''):null);
   if(s.rpe&&s.durationS)p('Charge ressentie (RPE × min)',Math.round(s.rpe*s.durationS/60));p('Météo',r.temp!=null?r.temp+' °C'+(r.hum!=null?', '+r.hum+' %':'')+(r.vent!=null?', vent '+r.vent+' km/h':''):null);
   return it.length?'Runalyze : '+it.join(' · '):'';
 }
