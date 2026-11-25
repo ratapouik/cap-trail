@@ -1401,7 +1401,8 @@ function readiness(){
     else ok('FC repos',`${lf.fcRepos} bpm (réf. ${Math.round(base)})`)}
   // ressenti (RPE = effort global perçu en fin de séance) comparé à ce que la FC laissait attendre
   const rs=rpeState();
-  if(rs){
+  if(rs&&rs.n<2)ok('Ressenti',`1 seule séance notée cette semaine (RPE ${rs.rpe} pour ~${rs.exp} attendu) : pas assez pour conclure`);
+  else if(rs){
     if(rs.gap>=3)pen(15,'Ressenti',`séances récentes ressenties bien plus dures que la FC ne l'indique (RPE ${rs.rpe} pour ~${rs.exp} attendu) : fatigue de fond probable`);
     else if(rs.gap>=2)pen(8,'Ressenti',`séances récentes ressenties plus dures que la FC ne l'indique (RPE ${rs.rpe} pour ~${rs.exp} attendu)`);
     else if(rs.gap<=-2)ok('Ressenti',`séances ressenties plus faciles que la FC ne l'indique (RPE ${rs.rpe} pour ~${rs.exp} attendu) : bon signe`);
